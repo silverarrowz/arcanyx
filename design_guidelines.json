@@ -1,0 +1,125 @@
+{
+  "theme": "Dark Mode Only",
+  "archetype": "Archetype 5: Jewel & Luxury (Mystical & Esoteric Variant)",
+  "language": "ru",
+  "colors": {
+    "background": {
+      "primary": "#0D0E15",
+      "secondary": "#151722",
+      "surface": "rgba(255, 255, 255, 0.05)"
+    },
+    "accents": {
+      "primary_cta": "#D4AF37",
+      "mystical_glow": "#9D4EDD",
+      "success": "#10B981",
+      "danger": "#EF4444",
+      "border_glow": "rgba(212, 175, 55, 0.2)"
+    },
+    "text": {
+      "primary": "#F3F4F6",
+      "secondary": "#9CA3AF",
+      "accent": "#D4AF37",
+      "mystical": "#9D4EDD"
+    }
+  },
+  "typography": {
+    "headings": {
+      "fontFamily": "Cormorant Garamond, serif",
+      "weights": [400, 600, 700],
+      "usage": "H1, H2, Magical Answers, Oracle Output, Tarot Card Names. Highly decorative for the esoteric feel."
+    },
+    "ui_body": {
+      "fontFamily": "Manrope, sans-serif",
+      "weights": [400, 500, 600],
+      "usage": "Buttons, Labels, Paragraphs, Tabs, App Navigation, Stats."
+    }
+  },
+  "spacing_system": {
+    "padding": "4px, 8px, 12px, 16px, 24px, 32px",
+    "screen_edges": "24px for generous breathing room",
+    "card_padding": "20px to 24px internal padding",
+    "gap": "16px between list items or grid elements"
+  },
+  "visual_effects": {
+    "glassmorphism": {
+      "background": "rgba(255, 255, 255, 0.05)",
+      "backdropFilter": "blur(16px)",
+      "border": "1px solid rgba(255, 255, 255, 0.1)",
+      "boxShadow": "0 8px 32px 0 rgba(0, 0, 0, 0.3)",
+      "borderRadius": "24px",
+      "description": "Apply to all cards, modals, and the Bottom Navigation bar to create a frosted cosmic glass effect."
+    },
+    "glowing_orbs": {
+      "primary": "Radial gradient using #9D4EDD (neon purple) fading to transparent, overlaid with heavy blur.",
+      "secondary": "Soft #D4AF37 (gold) flares and drop-shadows."
+    }
+  },
+  "layout": {
+    "app_shell": "Bottom Navigation Bar with 4 tabs (Главная, Оракул, Таро, Дневник). Preferred floating glassmorphism style.",
+    "cards": "Subtle border, inner glow, dark transparent background.",
+    "screen_container": "Full height, hidden scrollbars, dark #0D0E15 base color."
+  },
+  "animations": {
+    "reanimated_suggestions": [
+      {
+        "element": "Tarot Card Flip",
+        "description": "Interpolate rotateY from 0deg to 180deg with spring physics (damping & stiffness) to reveal the card front."
+      },
+      {
+        "element": "Oracle Orb Glow",
+        "description": "Use withRepeat and withTiming on scale (1 to 1.1) and opacity to create a slow, mystical breathing effect."
+      },
+      {
+        "element": "Diary Swipe Actions",
+        "description": "Use react-native-gesture-handler Swipeable. Left swipe reveals green check for 'Сбылось' (Came true). Right swipe reveals red cross for 'Не сбылось' (Didn't come true)."
+      },
+      {
+        "element": "Modal Entrances",
+        "description": "Fade in with a slight vertical slide (translateY) using ease-out timing."
+      }
+    ]
+  },
+  "icons": {
+    "library": "lucide-react-native",
+    "suggestions": {
+      "home": "Home, Sparkles",
+      "oracle": "Sphere, Eye",
+      "tarot": "Layers, BookOpen",
+      "diary": "Book, History",
+      "success": "CheckCircle2",
+      "fail": "XCircle"
+    }
+  },
+  "media": {
+    "backgrounds": [
+      {
+        "url": "https://images.unsplash.com/photo-1773088843510-277540282242?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MjJ8MHwxfHNlYXJjaHwyfHxkZWVwJTIwc3BhY2UlMjBuZWJ1bGElMjBjb3NtaWMlMjBzdGFyZmllbGR8ZW58MHx8fHwxNzc3NDY1ODc1fDA&ixlib=rb-4.1.0&q=85",
+        "category": "App Global Background",
+        "description": "Deep space cosmic starfield. Apply strong dark overlay (#0D0E15 at 80% opacity) so text remains readable."
+      }
+    ],
+    "orbs": [
+      {
+        "url": "https://images.unsplash.com/photo-1647247743538-0137d6a8a268?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwxfHxnbG93aW5nJTIwbWFnaWNhbCUyMG5lb24lMjBvcmJ8ZW58MHx8fHwxNzc3NDY1ODc1fDA&ixlib=rb-4.1.0&q=85",
+        "category": "Oracle Tab",
+        "description": "Glowing mystical neon orb reference to be used as a central interactive element in the Oracle tab."
+      }
+    ],
+    "tarot": [
+      {
+        "url": "https://images.unsplash.com/photo-1766766462775-3a6fd522e138?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzN8MHwxfHNlYXJjaHwyfHx0YXJvdCUyMGNhcmRzJTIwbXlzdGljYWwlMjBlc290ZXJpY3xlbnwwfHx8fDE3Nzc0NjU4NzV8MA&ixlib=rb-4.1.0&q=85",
+        "category": "Tarot Tab Spread",
+        "description": "Tarot cards arrangement image to use in headers or spread mode background."
+      },
+      {
+        "url": "https://images.pexels.com/photos/34445804/pexels-photo-34445804.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "category": "Tarot Draw Mode",
+        "description": "Background or placeholder image for the active Tarot draw mode."
+      }
+    ]
+  },
+  "testing": {
+    "attributes": "All interactive and key informational elements MUST use data-testid. Examples: data-testid=\"tab-home\", data-testid=\"btn-draw-card\", data-testid=\"oracle-input\", data-testid=\"diary-swipe-true\"."
+  },
+  "instructions_to_main_agent": "This is a mobile app (React Native with Expo). Use Expo's BlurView (or similar) to achieve glassmorphism since standard CSS backdrop-filter does not work natively on mobile views without a wrapper. For all text in Russian, ensure the fonts Cormorant Garamond and Manrope load Cyrillic character sets via expo-google-fonts. Adhere strictly to the #0D0E15 dark background. Gold (#D4AF37) is your primary action color, while Neon Purple (#9D4EDD) should be used for mystical radial background glows and active states. Build the 4 requested tabs exactly as specified."
+}
