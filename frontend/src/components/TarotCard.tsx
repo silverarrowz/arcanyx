@@ -111,16 +111,29 @@ export default function TarotCard({
           style={[styles.cardBg, { width, height }]}
         >
           <View style={styles.frontBorder}>
-            <View style={styles.frontInner}>
+            {/* Full-bleed illustration background */}
+            <Image
+              source={frontIllustration}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              transition={200}
+            />
+            {/* Gradient overlay for readability of text on top/bottom */}
+            <LinearGradient
+              colors={[
+                "rgba(13,14,21,0.55)",
+                "rgba(13,14,21,0.0)",
+                "rgba(13,14,21,0.0)",
+                "rgba(13,14,21,0.75)",
+              ]}
+              locations={[0, 0.25, 0.6, 1]}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            {/* Text overlays */}
+            <View style={styles.frontOverlay} pointerEvents="none">
               <Text style={styles.frontSymbol}>{card.symbol}</Text>
-              <View style={styles.frontIllustration}>
-                <Image
-                  source={frontIllustration}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="cover"
-                  transition={200}
-                />
-              </View>
+              <View style={{ flex: 1 }} />
               <Text style={styles.frontName} numberOfLines={2}>
                 {card.nameRu}
               </Text>
@@ -193,14 +206,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: theme.colors.gold,
     borderRadius: 14,
-    padding: 10,
     backgroundColor: "rgba(13,14,21,0.35)",
+    overflow: "hidden",
+    position: "relative",
   },
-  frontInner: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    borderRadius: 10,
+  frontOverlay: {
+    ...StyleSheet.absoluteFillObject,
     paddingVertical: 14,
     paddingHorizontal: 12,
     alignItems: "center",
@@ -210,29 +221,28 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.headingBold,
     fontSize: 22,
     letterSpacing: 2,
-  },
-  frontIllustration: {
-    flex: 1,
-    width: "100%",
-    minHeight: 140,
-    borderRadius: 8,
-    overflow: "hidden",
-    marginVertical: 8,
-    position: "relative",
+    textShadowColor: "rgba(0,0,0,0.7)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   frontName: {
     color: theme.colors.text,
     fontFamily: theme.fonts.headingBold,
     fontSize: 24,
     textAlign: "center",
-    marginTop: 8,
+    textShadowColor: "rgba(0,0,0,0.8)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   frontShort: {
     color: theme.colors.text,
-    opacity: 0.85,
+    opacity: 0.9,
     fontFamily: theme.fonts.body,
     fontSize: 12,
     textAlign: "center",
     marginTop: 6,
+    textShadowColor: "rgba(0,0,0,0.8)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
 });
