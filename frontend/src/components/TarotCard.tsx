@@ -8,10 +8,12 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { Sparkles } from "lucide-react-native";
 import { theme } from "../theme";
 import { TarotCard as TarotCardType } from "../data/tarotCards";
+import { frontArtSourceForCardId } from "../data/tarotFrontArt";
 
 type Props = {
   card: TarotCardType;
@@ -65,6 +67,8 @@ export default function TarotCard({
     onFlip();
   };
 
+  const frontIllustration = frontArtSourceForCardId(card.id);
+
   return (
     <Pressable
       onPress={handlePress}
@@ -110,7 +114,12 @@ export default function TarotCard({
             <View style={styles.frontInner}>
               <Text style={styles.frontSymbol}>{card.symbol}</Text>
               <View style={styles.frontIllustration}>
-                <Sparkles color={theme.colors.gold} size={56} />
+                <Image
+                  source={frontIllustration}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  transition={200}
+                />
               </View>
               <Text style={styles.frontName} numberOfLines={2}>
                 {card.nameRu}
@@ -204,8 +213,12 @@ const styles = StyleSheet.create({
   },
   frontIllustration: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    width: "100%",
+    minHeight: 140,
+    borderRadius: 8,
+    overflow: "hidden",
+    marginVertical: 8,
+    position: "relative",
   },
   frontName: {
     color: theme.colors.text,
