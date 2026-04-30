@@ -9,6 +9,13 @@ import React, {
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+export type TarotCardSnapshot = {
+  positionId: string;
+  positionLabelRu: string;
+  cardId: string;
+  cardName: string;
+};
+
 export type HistoryItem = {
   id: string;
   type: "oracle" | "tarot";
@@ -16,9 +23,14 @@ export type HistoryItem = {
   question: string;
   answer: string;
   category?: string; // oracle category color label
-  cardId?: string; // tarot card id
+  cardId?: string; // tarot card id (one-card spread)
   cardName?: string;
   outcome?: "fulfilled" | "failed" | null; // for oracle items
+  // Tarot spread extensions (optional, backwards-compatible)
+  spread?: string; // e.g. "one-card" | "three-card"
+  spreadLabelRu?: string;
+  intent?: string; // user-entered question ("О чём сейчас?")
+  cardsSnapshot?: TarotCardSnapshot[];
 };
 
 type HistoryContextValue = {

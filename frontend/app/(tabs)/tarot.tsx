@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -15,56 +15,138 @@ import Animated, {
   FadeIn,
   FadeInDown,
   FadeOut,
+  Layout,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { Layers, PenTool, X } from "lucide-react-native";
+import { Layers, PenTool, X, Sparkles } from "lucide-react-native";
 import { theme } from "../../src/theme";
 import CosmicBackground from "../../src/components/CosmicBackground";
 import GlassCard from "../../src/components/GlassCard";
 import TarotCard from "../../src/components/TarotCard";
 import { TAROT_DECK, TarotCard as TarotCardType } from "../../src/data/tarotCards";
-import { useHistory } from "../../src/context/HistoryContext";
+import {
+  DEFAULT_SPREAD_ID,
+  TAROT_SPREADS,
+  TarotSpread,
+  getSpreadById,
+} from "../../src/data/tarotSpreads";
+import { TarotCardSnapshot, useHistory } from "../../src/context/HistoryContext";
 
 type Phase = "spread" | "revealed";
 
-function shuffleSpread(): TarotCardType[] {
+function shuffleFan(count = 5): TarotCardType[] {
   const arr = [...TAROT_DECK];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return arr.slice(0, 5);
+  return arr.slice(0, count);
 }
 
 export default function TarotScreen() {
   const { addItem } = useHistory();
+  const [spreadId, setSpreadId] = useState<TarotSpread["id"]>(DEFAULT_SPREAD_ID);
+  const spread = useMemo(() => getSpreadById(spreadId), [spreadId]);
+
+  const [intent, setIntent] = useState("");
   const [phase, setPhase] = useState<Phase>("spread");
-  const [spread, setSpread] = useState<TarotCardType[]>(() => shuffleSpread());
-  const [picked, setPicked] = useState<TarotCardType | null>(null);
+  const [fan, setFan] = useState<TarotCardType[]>(() => shuffleFan(5));
+  const [pickedIds, setPickedIds] = useState<string[]>([]);
+  const [slots, setSlots] = useState<(TarotCardType | null)[]>(() =>
+    Array(spread.drawCount).fill(null),
+  );
+
   const [intuitionOpen, setIntuitionOpen] = useState(false);
   const [intuitionText, setIntuitionText] = useState("");
   const [savedIntuition, setSavedIntuition] = useState<string>("");
 
-  const handlePickCard = (card: TarotCardType) => {
-    if (phase !== "spread") return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-    setPicked(card);
-    setPhase("revealed");
+  const drawCount = spread.drawCount;
+  const nextSlotIndex = slots.findIndex((s) => s === null);
+  const allPicked = nextSlotIndex === -1;
+
+  const resetForSpread = useCallback(
+    (nextSpread: TarotSpread) => {
+      setFan(shuffleFan(5));
+      setPickedIds([]);
+      setSlots(Array(nextSpread.drawCount).fill(null));
+      setPhase("spread");
+      setIntuitionText("");
+      setSavedIntuition("");
+    },
+    [],
+  );
+
+  const handleSelectSpread = (id: TarotSpread["id"]) => {
+    if (id === spreadId) return;
+    Haptics.selectionAsync().catch(() => {});
+    const next = getSpreadById(id);
+    setSpreadId(id);
+    resetForSpread(next);
+  };
+
+  const commitHistory = (filledSlots: TarotCardType[]) => {
+    const trimmedIntent = intent.trim();
+    const snapshot: TarotCardSnapshot[] = filledSlots.map((c, i) => ({
+      positionId: spread.positions[i].id,
+      positionLabelRu: spread.positions[i].labelRu,
+      cardId: c.id,
+      cardName: c.nameRu,
+    }));
+
+    let question: string;
+    let answer: string;
+
+    if (drawCount === 1) {
+      const c = filledSlots[0];
+      question = trimmedIntent || "Одна карта";
+      answer = `${c.nameRu} — ${c.short}`;
+    } else {
+      question = trimmedIntent || spread.titleRu;
+      answer = filledSlots
+        .map((c, i) => `${spread.positions[i].labelRu}: ${c.nameRu}`)
+        .join(" · ");
+    }
+
     addItem({
       type: "tarot",
-      question: "Расклад на одну карту",
-      answer: `${card.nameRu} — ${card.short}`,
-      cardId: card.id,
-      cardName: card.nameRu,
+      question,
+      answer,
+      cardId: drawCount === 1 ? filledSlots[0].id : undefined,
+      cardName: drawCount === 1 ? filledSlots[0].nameRu : undefined,
+      spread: spread.id,
+      spreadLabelRu: spread.titleRu,
+      intent: trimmedIntent || undefined,
+      cardsSnapshot: snapshot,
     });
   };
 
+  const handlePickCard = (card: TarotCardType) => {
+    if (phase !== "spread") return;
+    if (pickedIds.includes(card.id)) return;
+    if (allPicked) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+
+    const idx = slots.findIndex((s) => s === null);
+    if (idx === -1) return;
+
+    const nextSlots = [...slots];
+    nextSlots[idx] = card;
+    const nextPickedIds = [...pickedIds, card.id];
+
+    setSlots(nextSlots);
+    setPickedIds(nextPickedIds);
+
+    const filledCount = nextSlots.filter(Boolean).length;
+    if (filledCount === drawCount) {
+      setPhase("revealed");
+      commitHistory(nextSlots as TarotCardType[]);
+    }
+  };
+
   const reset = () => {
-    setSpread(shuffleSpread());
-    setPicked(null);
-    setPhase("spread");
-    setIntuitionText("");
-    setSavedIntuition("");
+    Haptics.selectionAsync().catch(() => {});
+    resetForSpread(spread);
   };
 
   const saveIntuition = () => {
@@ -75,7 +157,28 @@ export default function TarotScreen() {
     );
   };
 
-  const cards = useMemo(() => spread, [spread]);
+  const subtitle = useMemo(() => {
+    if (phase === "revealed") {
+      return drawCount === 1
+        ? "Карта открыта. Прислушайся к её голосу."
+        : "Расклад собран. Читай историю по порядку.";
+    }
+    const base =
+      drawCount === 1
+        ? "Сосредоточься и выбери карту"
+        : `Вытяни ${drawCount} карты по очереди`;
+    return intent.trim().length > 0 ? `${base} · ${intent.trim()}` : base;
+  }, [phase, drawCount, intent]);
+
+  const visibleFan = useMemo(
+    () => fan.filter((c) => !pickedIds.includes(c.id)),
+    [fan, pickedIds],
+  );
+
+  const intuitionModalSubtitle =
+    drawCount === 1
+      ? "Запиши свои первые мысли, прежде чем читать толкование."
+      : "Запиши ощущения от всего расклада, прежде чем читать трактовку.";
 
   return (
     <View style={styles.root}>
@@ -84,55 +187,163 @@ export default function TarotScreen() {
         <ScrollView
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.eyebrow}>ТАРО</Text>
-          <Text style={styles.title}>Один расклад</Text>
-          <Text style={styles.subtitle}>
-            {phase === "spread"
-              ? "Сосредоточься на ситуации и выбери карту"
-              : "Карта открыта. Прислушайся к её голосу."}
-          </Text>
+          <Text style={styles.title}>{spread.titleRu}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
 
+          {/* Spread picker */}
+          <View style={styles.spreadPickerRow} testID="spread-picker">
+            {TAROT_SPREADS.map((s) => {
+              const active = s.id === spreadId;
+              return (
+                <Pressable
+                  key={s.id}
+                  onPress={() => handleSelectSpread(s.id)}
+                  testID={`spread-chip-${s.id}`}
+                  style={({ pressed }) => [
+                    styles.spreadChip,
+                    active && styles.spreadChipActive,
+                    pressed && { opacity: 0.85 },
+                  ]}
+                >
+                  <Sparkles
+                    color={active ? theme.colors.gold : theme.colors.textDim}
+                    size={13}
+                  />
+                  <View style={{ flexShrink: 1 }}>
+                    <Text
+                      style={[
+                        styles.spreadChipTitle,
+                        active && { color: theme.colors.text },
+                      ]}
+                    >
+                      {s.titleRu}
+                    </Text>
+                    <Text style={styles.spreadChipSubtitle} numberOfLines={1}>
+                      {s.subtitleRu}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* Optional intent input (only when still picking) */}
+          {phase === "spread" && (
+            <View style={styles.intentWrap}>
+              <Text style={styles.intentLabel}>О чём сейчас? (необязательно)</Text>
+              <TextInput
+                testID="tarot-intent-input"
+                value={intent}
+                onChangeText={setIntent}
+                placeholder="Например: отношения, работа, путь…"
+                placeholderTextColor={theme.colors.textDim}
+                style={styles.intentInput}
+                maxLength={140}
+              />
+            </View>
+          )}
+
+          {/* Three-card slots */}
+          {drawCount > 1 && (
+            <View style={styles.slotsRow}>
+              {spread.positions.map((pos, i) => {
+                const slotCard = slots[i];
+                const isNext = i === nextSlotIndex;
+                return (
+                  <View
+                    key={pos.id}
+                    style={styles.slotCol}
+                    testID={`three-card-slot-${i}`}
+                  >
+                    {slotCard ? (
+                      <Animated.View
+                        entering={FadeInDown.duration(450).springify()}
+                        layout={Layout.springify()}
+                      >
+                        <TarotCard
+                          card={slotCard}
+                          flipped
+                          width={92}
+                          height={142}
+                        />
+                      </Animated.View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.slotPlaceholder,
+                          isNext && styles.slotPlaceholderActive,
+                        ]}
+                      >
+                        <Text style={styles.slotPlaceholderIndex}>{i + 1}</Text>
+                      </View>
+                    )}
+                    <Text
+                      style={[
+                        styles.slotLabel,
+                        isNext && { color: theme.colors.gold },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {pos.labelRu}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Fan */}
           {phase === "spread" ? (
             <Animated.View
               entering={FadeIn.duration(400)}
-              style={styles.spreadWrap}
+              style={[
+                styles.spreadWrap,
+                drawCount > 1 && { paddingVertical: 30, minHeight: 220 },
+              ]}
             >
-              {cards.map((c, idx) => (
-                <Pressable
-                  key={c.id}
-                  onPress={() => handlePickCard(c)}
-                  testID={`tarot-card-slot-${idx}`}
-                  style={[
-                    styles.spreadCardWrap,
-                    {
-                      transform: [
-                        { rotate: `${(idx - 2) * 7}deg` },
-                        { translateY: Math.abs(idx - 2) * 8 },
-                      ],
-                      zIndex: 5 - Math.abs(idx - 2),
-                      marginHorizontal: -22,
-                    },
-                  ]}
-                >
-                  <TarotCard
-                    card={c}
-                    flipped={false}
-                    width={120}
-                    height={185}
-                  />
-                </Pressable>
-              ))}
+              {visibleFan.map((c, idx) => {
+                const center = (visibleFan.length - 1) / 2;
+                const offset = idx - center;
+                return (
+                  <Pressable
+                    key={c.id}
+                    onPress={() => handlePickCard(c)}
+                    testID={`tarot-card-slot-${idx}`}
+                    style={[
+                      styles.spreadCardWrap,
+                      {
+                        transform: [
+                          { rotate: `${offset * 7}deg` },
+                          { translateY: Math.abs(offset) * 8 },
+                        ],
+                        zIndex: 5 - Math.abs(offset),
+                        marginHorizontal: -22,
+                      },
+                    ]}
+                  >
+                    <TarotCard
+                      card={c}
+                      flipped={false}
+                      width={drawCount > 1 ? 100 : 120}
+                      height={drawCount > 1 ? 155 : 185}
+                    />
+                  </Pressable>
+                );
+              })}
             </Animated.View>
           ) : (
-            picked && (
+            // Revealed state
+            drawCount === 1 && slots[0] && (
               <Animated.View
                 entering={FadeInDown.duration(500).springify()}
                 style={styles.pickedWrap}
               >
                 <View style={styles.cardGlow} />
                 <TarotCard
-                  card={picked}
+                  card={slots[0] as TarotCardType}
                   flipped
                   width={220}
                   height={340}
@@ -142,30 +353,72 @@ export default function TarotScreen() {
             )
           )}
 
-          {phase === "revealed" && picked && (
-            <Animated.View entering={FadeIn.delay(400).duration(500)}>
-              <GlassCard
-                glow="gold"
-                borderColor={theme.colors.borderGold}
-                style={styles.meaningCard}
-              >
-                <View style={styles.meaningInner}>
-                  <Text style={styles.cardName} testID="card-name">
-                    {picked.nameRu}
-                  </Text>
-                  <Text style={styles.cardLatin}>{picked.name}</Text>
-                  <View style={styles.divider} />
-                  <Text style={styles.shortLabel}>Короткое значение</Text>
-                  <Text style={styles.shortText} testID="card-short">
-                    {picked.short}
-                  </Text>
-                  <View style={styles.dividerThin} />
-                  <Text style={styles.shortLabel}>Подробное толкование</Text>
-                  <Text style={styles.detailedText} testID="card-detailed">
-                    {picked.detailed}
-                  </Text>
-                </View>
-              </GlassCard>
+          {/* Interpretation block */}
+          {phase === "revealed" && (
+            <Animated.View entering={FadeIn.delay(300).duration(500)}>
+              {drawCount === 1 && slots[0] && (
+                <GlassCard
+                  glow="gold"
+                  borderColor={theme.colors.borderGold}
+                  style={styles.meaningCard}
+                >
+                  <View style={styles.meaningInner}>
+                    <Text style={styles.cardName} testID="card-name">
+                      {(slots[0] as TarotCardType).nameRu}
+                    </Text>
+                    <Text style={styles.cardLatin}>
+                      {(slots[0] as TarotCardType).name}
+                    </Text>
+                    <View style={styles.divider} />
+                    <Text style={styles.shortLabel}>Короткое значение</Text>
+                    <Text style={styles.shortText} testID="card-short">
+                      {(slots[0] as TarotCardType).short}
+                    </Text>
+                    <View style={styles.dividerThin} />
+                    <Text style={styles.shortLabel}>Подробное толкование</Text>
+                    <Text style={styles.detailedText} testID="card-detailed">
+                      {(slots[0] as TarotCardType).detailed}
+                    </Text>
+                  </View>
+                </GlassCard>
+              )}
+
+              {drawCount > 1 &&
+                slots.map((card, i) => {
+                  if (!card) return null;
+                  const pos = spread.positions[i];
+                  return (
+                    <GlassCard
+                      key={pos.id}
+                      glow={i === 0 ? "gold" : "purple"}
+                      borderColor={
+                        i === 0
+                          ? theme.colors.borderGold
+                          : theme.colors.borderPurple
+                      }
+                      style={styles.meaningCard}
+                    >
+                      <View style={styles.meaningInner}>
+                        <Text style={styles.positionEyebrow}>
+                          {`ПОЗИЦИЯ ${i + 1} · ${pos.labelRu.toUpperCase()}`}
+                        </Text>
+                        <Text
+                          style={styles.cardName}
+                          testID={`three-card-name-${i}`}
+                        >
+                          {card.nameRu}
+                        </Text>
+                        <Text style={styles.cardLatin}>{card.name}</Text>
+                        <View style={styles.divider} />
+                        <Text style={styles.shortLabel}>Короткое значение</Text>
+                        <Text style={styles.shortText}>{card.short}</Text>
+                        <View style={styles.dividerThin} />
+                        <Text style={styles.shortLabel}>Подробное толкование</Text>
+                        <Text style={styles.detailedText}>{card.detailed}</Text>
+                      </View>
+                    </GlassCard>
+                  );
+                })}
 
               {savedIntuition.length > 0 && (
                 <GlassCard
@@ -247,13 +500,17 @@ export default function TarotScreen() {
                   </Pressable>
                 </View>
                 <Text style={styles.modalSubtitle}>
-                  Запиши свои первые мысли, прежде чем читать толкование.
+                  {intuitionModalSubtitle}
                 </Text>
                 <TextInput
                   testID="intuition-input"
                   value={intuitionText}
                   onChangeText={setIntuitionText}
-                  placeholder="Что я чувствую, глядя на эту карту?"
+                  placeholder={
+                    drawCount === 1
+                      ? "Что я чувствую, глядя на эту карту?"
+                      : "Какая история складывается у меня внутри?"
+                  }
                   placeholderTextColor={theme.colors.textDim}
                   multiline
                   style={styles.modalInput}
@@ -299,14 +556,111 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.body,
     fontSize: 14,
     marginTop: 6,
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  spreadPickerRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 14,
+  },
+  spreadChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  spreadChipActive: {
+    borderColor: theme.colors.borderGold,
+    backgroundColor: "rgba(212,175,55,0.12)",
+  },
+  spreadChipTitle: {
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.bodySemi,
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+  spreadChipSubtitle: {
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.body,
+    fontSize: 10,
+    marginTop: 2,
+    opacity: 0.85,
+  },
+  intentWrap: {
+    marginBottom: 8,
+  },
+  intentLabel: {
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 11,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  intentInput: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.body,
+    fontSize: 14,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  slotsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 10,
+    marginTop: 18,
+    marginBottom: 6,
+  },
+  slotCol: {
+    flex: 1,
+    alignItems: "center",
+  },
+  slotPlaceholder: {
+    width: 92,
+    height: 142,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: theme.colors.border,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  slotPlaceholderActive: {
+    borderColor: theme.colors.borderGold,
+    backgroundColor: "rgba(212,175,55,0.06)",
+  },
+  slotPlaceholderIndex: {
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.headingBold,
+    fontSize: 28,
+    opacity: 0.5,
+  },
+  slotLabel: {
+    marginTop: 8,
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.bodySemi,
+    fontSize: 11,
+    letterSpacing: 1.3,
+    textTransform: "uppercase",
   },
   spreadWrap: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 50,
-    minHeight: 280,
+    paddingVertical: 40,
+    minHeight: 260,
   },
   spreadCardWrap: {
     shadowColor: theme.colors.purple,
@@ -332,13 +686,21 @@ const styles = StyleSheet.create({
     shadowRadius: 50,
   },
   meaningCard: {
-    marginTop: 8,
+    marginTop: 12,
   },
   meaningInner: { padding: 22 },
+  positionEyebrow: {
+    color: theme.colors.purple,
+    fontFamily: theme.fonts.bodySemi,
+    fontSize: 10,
+    letterSpacing: 2.2,
+    textAlign: "center",
+    marginBottom: 8,
+  },
   cardName: {
     color: theme.colors.gold,
     fontFamily: theme.fonts.headingBold,
-    fontSize: 28,
+    fontSize: 26,
     textAlign: "center",
   },
   cardLatin: {

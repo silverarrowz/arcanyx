@@ -101,3 +101,53 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Extend the Tarot tab only to support multiple spreads (one-card + three-card) with data-driven
+  spread config, spread picker chips, optional intent input, three-card sequential pick with
+  slots, 3-section interpretation, intuition modal consistent per spread, and history/diary
+  persistence. Keep existing visual style (GlassCard, cosmic theme). No subscriptions, no reversed cards.
+
+frontend:
+  - task: "Tarot: data-driven spreads + one-card / three-card UX"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/tarot.tsx, frontend/src/data/tarotSpreads.ts, frontend/src/context/HistoryContext.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Added src/data/tarotSpreads.ts (one-card + three-card with Russian positions).
+          Extended HistoryItem with optional spread, spreadLabelRu, intent, cardsSnapshot (backwards compatible).
+          Rewrote tarot.tsx: spread picker chips (testID spread-chip-<id>), optional intent input
+          (testID tarot-intent-input), one-card flow preserved, three-card flow with 3 slot
+          placeholders (testID three-card-slot-<i>), sequential pick from a 5-card fan with
+          Reanimated FadeInDown into slots, 3-section interpretation block (short + detailed
+          per position), shared intuition modal (label changes per spread), reset button
+          (testID tarot-reset-btn). Verified visually via screenshot: initial one-card picker
+          + fan, switch to three-card shows slots/labels (active highlighted gold), picking 3
+          cards fills slots and reveals 3-section interpretation, reset clears slots.
+          Diary entry saved correctly (e.g. "Одна карта" / «Влюблённые — Выбор сердца…»).
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 0
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Tarot: data-driven spreads + one-card / three-card UX"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Implemented multi-spread Tarot as continuation task. Only frontend tarot tab and history
+      context touched. No backend changes. All lint clean, no new TS errors introduced (existing
+      CosmicBackground.tsx TS warning is pre-existing and unrelated).
