@@ -171,7 +171,7 @@ export default function HomeScreen() {
           <View style={styles.heroContainer}>
             <Image
               source={HERO_BG}
-              style={StyleSheet.absoluteFill}
+              style={styles.heroImage}
               contentFit="cover"
               contentPosition="top right"
               transition={300}
@@ -545,6 +545,13 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     marginBottom: -40,
     overflow: "hidden",
+  },
+  heroImage: {
+    position: "absolute",
+    top: -90,
+    left: 0,
+    right: 0,
+    bottom: -30,
   },
 
   /* Eyebrow */
