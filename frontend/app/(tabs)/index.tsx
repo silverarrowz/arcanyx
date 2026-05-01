@@ -25,6 +25,7 @@ import {
 } from "lucide-react-native";
 
 const HERO_BG = require("../../assets/home/bg-main.png");
+const ENERGY_BG = require("../../assets/home/bg-energy.png");
 import { theme } from "../../src/theme";
 import CosmicBackground from "../../src/components/CosmicBackground";
 import GlassCard from "../../src/components/GlassCard";
@@ -365,6 +366,26 @@ export default function HomeScreen() {
             borderColor={theme.colors.borderPurple}
             style={styles.energyCard}
           >
+            {/* Background image positioned to the right */}
+            <Image
+              source={ENERGY_BG}
+              style={styles.energyBgImage}
+              contentFit="cover"
+              contentPosition="right center"
+            />
+            {/* Gradient overlay to blend with card and keep text readable */}
+            <LinearGradient
+              colors={[
+                "rgba(35,31,58,0.95)",
+                "rgba(35,31,58,0.85)",
+                "rgba(35,31,58,0.4)",
+                "rgba(35,31,58,0.0)",
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              locations={[0, 0.35, 0.65, 1]}
+              style={StyleSheet.absoluteFill}
+            />
             <View style={styles.energyInner}>
               <View style={styles.energyText}>
                 <View style={styles.eyebrowRow}>
@@ -373,22 +394,11 @@ export default function HomeScreen() {
                 </View>
                 <Text style={styles.energyTitle}>{energy.title}</Text>
                 <View style={styles.quoteRow}>
-                  <Text style={styles.quoteMark}>“</Text>
+                  <Text style={styles.quoteMark}>"</Text>
                   <Text style={styles.quoteText} testID="energy-phrase">
                     {energy.quote || dailyPhrase}
                   </Text>
                 </View>
-              </View>
-
-              <View style={styles.crystalSlot}>
-                <LinearGradient
-                  colors={["rgba(196,123,234,0.34)", "rgba(53,43,98,0.0)"]}
-                  style={StyleSheet.absoluteFill}
-                />
-                <View style={styles.crystalShape} />
-                <View style={styles.crystalShapeSm} />
-                <View style={[styles.tinyStar, { top: 8, right: 14 }]} />
-                <View style={[styles.tinyStar, { top: 28, left: 8 }]} />
               </View>
             </View>
           </GlassCard>
@@ -743,6 +753,14 @@ const styles = StyleSheet.create({
   /* Energy card */
   energyCard: {
     marginBottom: 22,
+    overflow: "hidden",
+  },
+  energyBgImage: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "65%",
   },
   energyInner: {
     flexDirection: "row",
@@ -779,41 +797,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontStyle: "italic",
-  },
-  crystalSlot: {
-    width: 110,
-    height: 120,
-    alignSelf: "center",
-    borderRadius: 16,
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-  crystalShape: {
-    width: 38,
-    height: 60,
-    backgroundColor: "rgba(196,123,234,0.55)",
-    borderWidth: 1,
-    borderColor: "rgba(239,203,255,0.7)",
-    transform: [{ skewY: "-6deg" }, { rotate: "4deg" }],
-    borderRadius: 3,
-    shadowColor: theme.colors.mauve,
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-  },
-  crystalShapeSm: {
-    position: "absolute",
-    left: 28,
-    bottom: 22,
-    width: 22,
-    height: 38,
-    backgroundColor: "rgba(196,123,234,0.35)",
-    borderWidth: 1,
-    borderColor: "rgba(239,203,255,0.5)",
-    transform: [{ rotate: "-8deg" }],
-    borderRadius: 2,
   },
 
   /* Section head */
