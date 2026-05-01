@@ -13,6 +13,7 @@ import {
   Manrope_600SemiBold,
   useFonts,
 } from "@expo-google-fonts/manrope";
+import { YesevaOne_400Regular } from "@expo-google-fonts/yeseva-one";
 import { View } from "react-native";
 import { HistoryProvider } from "../src/context/HistoryContext";
 import { theme } from "../src/theme";
@@ -26,6 +27,7 @@ export default function RootLayout() {
     Manrope_400Regular,
     Manrope_500Medium,
     Manrope_600SemiBold,
+    YesevaOne_400Regular,
   });
 
   useEffect(() => {

@@ -2,6 +2,9 @@ import React from "react";
 import { Tabs } from "expo-router";
 import { StyleSheet, View, Text, Platform } from "react-native";
 import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
+import { PlatformPressable } from "@react-navigation/elements";
+import type { BottomTabBarButtonProps } from "@react-navigation/bottom-tabs";
 import { Sparkles, Eye, Layers, BookOpen } from "lucide-react-native";
 import { theme } from "../../src/theme";
 
@@ -15,34 +18,50 @@ function TabBarIcon({
 }: IconProps & { Icon: any; label: string }) {
   return (
     <View style={styles.iconWrap}>
-      <View
-        style={[
-          styles.iconCircle,
-          focused && styles.iconCircleActive,
-        ]}
-      >
-        <Icon color={color} size={focused ? 22 : 20} strokeWidth={focused ? 2 : 1.6} />
+      <View style={[styles.activePill, focused && styles.activePillFocused]}>
+        {focused && (
+          <LinearGradient
+            colors={["rgba(239,160,192,0.44)", "rgba(157,124,230,0.34)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        )}
+        <View style={styles.iconCircle}>
+          <Icon color={color} size={focused ? 22 : 20} strokeWidth={focused ? 2 : 1.6} />
+          <Text
+            style={[
+              styles.iconLabel,
+              { color: focused ? theme.colors.text : theme.colors.textDim },
+            ]}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        </View>
       </View>
-      <Text
-        style={[
-          styles.iconLabel,
-          { color: focused ? theme.colors.gold : theme.colors.textDim },
-        ]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
     </View>
+  );
+}
+
+function CenteredTabBarButton(props: BottomTabBarButtonProps) {
+  // Default UITabKit style uses justifyContent 'flex-start' for a column tab; center for our pill bar.
+  return (
+    <PlatformPressable {...props} style={[props.style, { justifyContent: "center" }]} />
   );
 }
 
 export default function TabsLayout() {
   return (
     <Tabs
+      // Floating tab bar handles bottom inset via `tabBar.bottom`; disable extra internal bottom padding.
+      safeAreaInsets={{ bottom: 0 }}
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
+        tabBarButton: (p) => <CenteredTabBarButton {...p} />,
         tabBarStyle: styles.tabBar,
+        tabBarItemStyle: styles.tabBarItem,
         tabBarBackground: () => (
           <BlurView
             intensity={40}
@@ -126,51 +145,67 @@ const styles = StyleSheet.create({
     bottom: Platform.OS === "ios" ? 24 : 16,
     left: 16,
     right: 16,
-    height: 76,
-    borderRadius: 28,
+    height: 70,
+    borderRadius: 30,
     borderTopWidth: 0,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderStrong,
     backgroundColor: "transparent",
     overflow: "hidden",
     elevation: 12,
-    shadowColor: "#000",
+    shadowColor: "#05030D",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
+    shadowOpacity: 0.45,
     shadowRadius: 24,
   },
   tabBarOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(13,14,21,0.7)",
+    backgroundColor: "rgba(26,23,43,0.86)",
+  },
+  tabBarItem: {
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 0,
   },
   iconWrap: {
     alignItems: "center",
     justifyContent: "center",
-    width: 64,
-    paddingTop: 8,
+    width: "100%",
+    height: "100%",
+  },
+  activePill: {
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 40,
+    borderRadius: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    overflow: "hidden",
+  },
+  activePillFocused: {
+    backgroundColor: theme.colors.purpleSoft,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGold,
+    shadowColor: theme.colors.mauve,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
   },
   iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 40,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: "transparent",
   },
-  iconCircleActive: {
-    backgroundColor: "rgba(212,175,55,0.12)",
-    borderColor: "rgba(212,175,55,0.45)",
-    shadowColor: theme.colors.gold,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-  },
   iconLabel: {
     fontSize: 10,
     fontFamily: theme.fonts.bodyMedium,
-    marginTop: 4,
+    marginTop: 3,
     letterSpacing: 0.5,
   },
 });

@@ -15,7 +15,7 @@ type Props = {
 export default function GlassCard({
   children,
   style,
-  intensity = 30,
+  intensity = 28,
   tint = "dark",
   borderColor,
   glow = "none",
@@ -48,29 +48,22 @@ const styles = StyleSheet.create({
   wrapper: {
     borderRadius: theme.radius.lg,
     overflow: "visible",
+    ...theme.shadows.card,
   },
   inner: {
     borderRadius: theme.radius.lg,
     borderWidth: 1,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    backgroundColor: theme.colors.surfaceGlass,
   },
   bgOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(21, 23, 34, 0.55)",
+    backgroundColor: "rgba(35,31,58,0.74)",
   },
   glowGold: {
-    shadowColor: theme.colors.gold,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 20,
-    elevation: 12,
+    ...theme.shadows.glowGold,
   },
   glowPurple: {
-    shadowColor: theme.colors.purple,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55,
-    shadowRadius: 24,
-    elevation: 14,
+    ...theme.shadows.glowPurple,
   },
 });

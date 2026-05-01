@@ -10,7 +10,6 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
-import { Sparkles } from "lucide-react-native";
 import { theme } from "../theme";
 import { TarotCard as TarotCardType } from "../data/tarotCards";
 import { frontArtSourceForCardId } from "../data/tarotFrontArt";
@@ -23,7 +22,12 @@ type Props = {
   onFlip?: () => void;
   testID?: string;
   showShortOnly?: boolean;
+  /** Hide symbol/name overlay on front — art-only (e.g. multi-card spreads). */
+  hideFrontText?: boolean;
 };
+
+const HAIRLINE = StyleSheet.hairlineWidth > 0 ? StyleSheet.hairlineWidth : 1;
+const CARD_BACK_IMAGE = require("../../assets/tarot/card-back.png");
 
 export default function TarotCard({
   card,
@@ -33,8 +37,9 @@ export default function TarotCard({
   onFlip,
   testID,
   showShortOnly = false,
+  hideFrontText = false,
 }: Props) {
-  const progress = useSharedValue(0);
+  const progress = useSharedValue(flipped ? 1 : 0);
 
   useEffect(() => {
     progress.value = withTiming(flipped ? 1 : 0, {
@@ -81,56 +86,47 @@ export default function TarotCard({
         style={[styles.face, { width, height }, backStyle]}
         pointerEvents={flipped ? "none" : "auto"}
       >
-        <LinearGradient
-          colors={[theme.colors.purpleDeep, "#0D0E15", theme.colors.purple]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.cardBg, { width, height }]}
-        >
-          <View style={styles.backBorder}>
-            <View style={styles.backInner}>
-              <Sparkles color={theme.colors.gold} size={36} />
-              <View style={styles.backDivider} />
-              <Text style={styles.backSymbol}>✦ ☾ ✦</Text>
-              <View style={styles.backDivider} />
-              <Text style={styles.backHint}>Нажми, чтобы открыть</Text>
-            </View>
-          </View>
-        </LinearGradient>
+        <Image
+          source={CARD_BACK_IMAGE}
+          style={styles.backImage}
+          contentFit="cover"
+          transition={200}
+        />
+        <View style={styles.edgeRim} pointerEvents="none" />
+        <View style={styles.innerRim} pointerEvents="none" />
       </Animated.View>
 
       {/* Front */}
       <Animated.View
-        style={[styles.face, styles.front, { width, height }, frontStyle]}
+        style={[styles.face, styles.frontFace, { width, height }, frontStyle]}
         pointerEvents={flipped ? "auto" : "none"}
       >
-        <LinearGradient
-          colors={card.gradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.cardBg, { width, height }]}
-        >
-          <View style={styles.frontBorder}>
-            {/* Full-bleed illustration background */}
-            <Image
-              source={frontIllustration}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              transition={200}
-            />
-            {/* Gradient overlay for readability of text on top/bottom */}
-            <LinearGradient
-              colors={[
-                "rgba(13,14,21,0.55)",
-                "rgba(13,14,21,0.0)",
-                "rgba(13,14,21,0.0)",
-                "rgba(13,14,21,0.75)",
-              ]}
-              locations={[0, 0.25, 0.6, 1]}
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-            {/* Text overlays */}
+        <View style={[styles.frontSurface, { width, height }]}>
+          <LinearGradient
+            colors={["#302852", "#171429"]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <Image
+            source={frontIllustration}
+            style={styles.frontImage}
+            contentFit="cover"
+            transition={200}
+          />
+          <LinearGradient
+            colors={[
+              "rgba(10,11,14,0.45)",
+              "rgba(10,11,14,0)",
+              "rgba(10,11,14,0)",
+              "rgba(10,11,14,0.68)",
+            ]}
+            locations={[0, 0.28, 0.62, 1]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <View style={styles.edgeRim} pointerEvents="none" />
+          <View style={styles.innerRim} pointerEvents="none" />
+          {!hideFrontText && (
             <View style={styles.frontOverlay} pointerEvents="none">
               <Text style={styles.frontSymbol}>{card.symbol}</Text>
               <View style={{ flex: 1 }} />
@@ -143,8 +139,8 @@ export default function TarotCard({
                 </Text>
               )}
             </View>
-          </View>
-        </LinearGradient>
+          )}
+        </View>
       </Animated.View>
     </Pressable>
   );
@@ -154,85 +150,64 @@ const styles = StyleSheet.create({
   wrapper: {
     alignItems: "center",
     justifyContent: "center",
+    ...theme.shadows.card,
   },
   face: {
     position: "absolute",
     backfaceVisibility: "hidden",
-    borderRadius: 20,
+    borderRadius: 28,
     overflow: "hidden",
+    backgroundColor: theme.colors.surfaceMuted,
   },
-  front: {},
-  cardBg: {
-    flex: 1,
-    padding: 8,
-  },
-  backBorder: {
-    flex: 1,
-    borderWidth: 2,
-    borderColor: theme.colors.gold,
-    borderRadius: 14,
-    padding: 10,
-    backgroundColor: "rgba(13,14,21,0.4)",
-  },
-  backInner: {
-    flex: 1,
+  frontFace: {},
+  edgeRim: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: "rgba(212,175,55,0.4)",
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 14,
+    borderColor: theme.colors.borderGold,
   },
-  backDivider: {
-    width: "60%",
-    height: 1,
-    backgroundColor: "rgba(212,175,55,0.4)",
+  innerRim: {
+    ...StyleSheet.absoluteFillObject,
+    margin: 7,
+    borderRadius: 21,
+    borderWidth: HAIRLINE,
+    borderColor: "rgba(255,247,234,0.22)",
   },
-  backSymbol: {
-    color: theme.colors.gold,
-    fontSize: 22,
-    letterSpacing: 4,
-    fontFamily: theme.fonts.heading,
+  backImage: {
+    ...StyleSheet.absoluteFillObject,
   },
-  backHint: {
-    color: theme.colors.textDim,
-    fontSize: 12,
-    fontFamily: theme.fonts.body,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-  frontBorder: {
-    flex: 1,
-    borderWidth: 2,
-    borderColor: theme.colors.gold,
-    borderRadius: 14,
-    backgroundColor: "rgba(13,14,21,0.35)",
+  frontSurface: {
     overflow: "hidden",
+    borderRadius: 26,
     position: "relative",
+    backgroundColor: theme.colors.surfaceMuted,
+  },
+  frontImage: {
+    ...StyleSheet.absoluteFillObject,
   },
   frontOverlay: {
     ...StyleSheet.absoluteFillObject,
     paddingVertical: 14,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     alignItems: "center",
   },
   frontSymbol: {
     color: theme.colors.gold,
     fontFamily: theme.fonts.headingBold,
-    fontSize: 22,
-    letterSpacing: 2,
-    textShadowColor: "rgba(0,0,0,0.7)",
+    fontSize: 18,
+    letterSpacing: 1.5,
+    textShadowColor: "rgba(0,0,0,0.6)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    textShadowRadius: 3,
   },
   frontName: {
     color: theme.colors.text,
     fontFamily: theme.fonts.headingBold,
-    fontSize: 24,
+    fontSize: 22,
     textAlign: "center",
-    textShadowColor: "rgba(0,0,0,0.8)",
+    textShadowColor: "rgba(0,0,0,0.85)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+    textShadowRadius: 5,
   },
   frontShort: {
     color: theme.colors.text,
@@ -240,9 +215,9 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.body,
     fontSize: 12,
     textAlign: "center",
-    marginTop: 6,
-    textShadowColor: "rgba(0,0,0,0.8)",
+    marginTop: 8,
+    textShadowColor: "rgba(0,0,0,0.85)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    textShadowRadius: 3,
   },
 });

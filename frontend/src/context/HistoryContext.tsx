@@ -23,14 +23,18 @@ export type HistoryItem = {
   question: string;
   answer: string;
   category?: string; // oracle category color label
+  oracleSource?: string;
+  oracleSourceLabel?: string;
   cardId?: string; // tarot card id (one-card spread)
   cardName?: string;
   outcome?: "fulfilled" | "failed" | null; // for oracle items
   // Tarot spread extensions (optional, backwards-compatible)
-  spread?: string; // e.g. "one-card" | "three-card"
+  spread?: string; // e.g. "one-card" | "three-time" | "three-situation" | "love-three" | legacy "three-card"
   spreadLabelRu?: string;
   intent?: string; // user-entered question ("О чём сейчас?")
   cardsSnapshot?: TarotCardSnapshot[];
+  /** Short synthesized interpretation for multi-card spreads (local mock, no AI). */
+  tarotSummaryRu?: string;
 };
 
 type HistoryContextValue = {

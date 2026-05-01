@@ -84,16 +84,16 @@ function DiaryRow({ item }: { item: HistoryItem }) {
                 styles.typeBadge,
                 {
                   borderColor: isOracle
-                    ? theme.colors.purple
+                    ? theme.colors.mauve
                     : theme.colors.gold,
                   backgroundColor: isOracle
-                    ? "rgba(157,78,221,0.15)"
-                    : "rgba(212,175,55,0.15)",
+                    ? theme.colors.mauveSoft
+                    : theme.colors.goldSoft,
                 },
               ]}
             >
               {isOracle ? (
-                <Eye color={theme.colors.purple} size={12} />
+                <Eye color={theme.colors.mauve} size={12} />
               ) : (
                 <Layers color={theme.colors.gold} size={12} />
               )}
@@ -101,7 +101,7 @@ function DiaryRow({ item }: { item: HistoryItem }) {
                 style={[
                   styles.typeText,
                   {
-                    color: isOracle ? theme.colors.purple : theme.colors.gold,
+                    color: isOracle ? theme.colors.mauve : theme.colors.gold,
                   },
                 ]}
               >
@@ -116,6 +116,15 @@ function DiaryRow({ item }: { item: HistoryItem }) {
           </Text>
           <Text style={styles.answer}>«{item.answer}»</Text>
 
+          {!isOracle && item.spreadLabelRu && (
+            <Text style={styles.spreadMeta}>{item.spreadLabelRu}</Text>
+          )}
+          {!isOracle && item.tarotSummaryRu && (
+            <Text style={styles.tarotSummary} numberOfLines={4}>
+              {item.tarotSummaryRu}
+            </Text>
+          )}
+
           {meta && (
             <View style={styles.metaRow}>
               <View
@@ -125,7 +134,9 @@ function DiaryRow({ item }: { item: HistoryItem }) {
                 ]}
               />
               <Text style={[styles.metaText, { color: meta.color }]}>
-                {meta.label}
+                {item.oracleSourceLabel
+                  ? `${item.oracleSourceLabel} · ${meta.label}`
+                  : meta.label}
               </Text>
             </View>
           )}
@@ -252,14 +263,14 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.bodyMedium,
     fontSize: 11,
     letterSpacing: 3,
-    color: theme.colors.textDim,
+    color: theme.colors.gold,
     marginBottom: 6,
     marginTop: 8,
   },
   title: {
-    fontFamily: theme.fonts.headingBold,
+    fontFamily: theme.fonts.display,
     color: theme.colors.text,
-    fontSize: 30,
+    fontSize: 37,
   },
   subtitle: {
     color: theme.colors.textDim,
@@ -274,7 +285,7 @@ const styles = StyleSheet.create({
   },
   rowWrap: {},
   row: {},
-  rowInner: { padding: 18 },
+  rowInner: { padding: 19 },
   rowHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -304,18 +315,36 @@ const styles = StyleSheet.create({
   },
   question: {
     color: theme.colors.text,
-    fontFamily: theme.fonts.bodyMedium,
+    fontFamily: theme.fonts.bodySemi,
     fontSize: 15,
     marginBottom: 6,
   },
   answer: {
-    color: theme.colors.text,
+    color: theme.colors.lilac,
     fontFamily: theme.fonts.heading,
     fontStyle: "italic",
     fontSize: 17,
     lineHeight: 23,
     marginBottom: 8,
     opacity: 0.92,
+  },
+  spreadMeta: {
+    color: theme.colors.gold,
+    fontFamily: theme.fonts.bodySemi,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginBottom: 8,
+    marginTop: 2,
+    opacity: 0.92,
+  },
+  tarotSummary: {
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.body,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 6,
+    opacity: 0.95,
   },
   metaRow: {
     flexDirection: "row",
@@ -348,8 +377,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderColor: theme.colors.borderPurple,
+    backgroundColor: theme.colors.surfaceGlass,
   },
   actionBtnActiveGreen: {
     borderColor: "rgba(16,185,129,0.5)",
@@ -371,7 +400,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: theme.colors.text,
-    fontFamily: theme.fonts.headingBold,
+    fontFamily: theme.fonts.display,
     fontSize: 20,
     marginTop: 6,
   },

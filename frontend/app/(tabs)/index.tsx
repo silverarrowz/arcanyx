@@ -113,7 +113,7 @@ export default function HomeScreen() {
               card={cardOfTheDay}
               flipped={flipped}
               onFlip={handleFlip}
-              width={240}
+              width={250}
               height={380}
               testID="card-of-the-day"
             />
@@ -137,7 +137,7 @@ export default function HomeScreen() {
 
           {/* Sign of the Day */}
           <GlassCard
-            borderColor={theme.colors.border}
+            borderColor={theme.colors.borderPurple}
             style={styles.signCard}
           >
             <View style={styles.signInner}>
@@ -164,21 +164,22 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 24,
-    marginTop: 8,
+    marginBottom: 22,
+    marginTop: 10,
   },
   eyebrow: {
     fontFamily: theme.fonts.bodyMedium,
     fontSize: 11,
     letterSpacing: 3,
-    color: theme.colors.textDim,
+    color: theme.colors.gold,
     marginBottom: 6,
   },
   headerTitle: {
-    fontFamily: theme.fonts.headingBold,
+    fontFamily: theme.fonts.display,
     color: theme.colors.text,
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 35,
+    lineHeight: 43,
+    letterSpacing: 0.2,
   },
   streakBadge: {
     flexDirection: "row",
@@ -187,19 +188,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "rgba(212,175,55,0.12)",
+    backgroundColor: theme.colors.surfaceGlass,
     borderWidth: 1,
-    borderColor: "rgba(212,175,55,0.4)",
+    borderColor: theme.colors.borderGold,
   },
   streakText: {
-    color: theme.colors.gold,
+    color: theme.colors.text,
     fontFamily: theme.fonts.bodySemi,
     fontSize: 13,
   },
   energyCard: {
     marginBottom: 28,
   },
-  energyInner: { padding: 20 },
+  energyInner: { padding: 22 },
   energyHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -207,16 +208,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   energyEyebrow: {
-    color: theme.colors.purple,
+    color: theme.colors.mauve,
     fontFamily: theme.fonts.bodySemi,
-    fontSize: 12,
-    letterSpacing: 2,
+    fontSize: 11,
+    letterSpacing: 1.6,
   },
   energyPhrase: {
     color: theme.colors.text,
     fontFamily: theme.fonts.heading,
-    fontSize: 22,
-    lineHeight: 30,
+    fontSize: 24,
+    lineHeight: 32,
     fontStyle: "italic",
   },
   section: {
@@ -225,7 +226,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: theme.colors.text,
-    fontFamily: theme.fonts.headingBold,
+    fontFamily: theme.fonts.display,
     fontSize: 24,
   },
   sectionSubtitle: {
@@ -245,11 +246,11 @@ const styles = StyleSheet.create({
     width: 280,
     height: 380,
     borderRadius: 200,
-    backgroundColor: "rgba(157,78,221,0.18)",
-    shadowColor: theme.colors.purple,
+    backgroundColor: "rgba(239,160,192,0.10)",
+    shadowColor: theme.colors.mauve,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 60,
+    shadowOpacity: 0.28,
+    shadowRadius: 34,
   },
   cardMessage: {
     marginTop: 8,
@@ -258,7 +259,7 @@ const styles = StyleSheet.create({
   cardMessageInner: { padding: 20 },
   cardName: {
     color: theme.colors.gold,
-    fontFamily: theme.fonts.headingBold,
+    fontFamily: theme.fonts.display,
     fontSize: 22,
     textAlign: "center",
   },
@@ -266,7 +267,7 @@ const styles = StyleSheet.create({
     height: 1,
     width: 40,
     alignSelf: "center",
-    backgroundColor: "rgba(212,175,55,0.5)",
+    backgroundColor: "rgba(255,215,154,0.5)",
     marginVertical: 12,
   },
   cardAdvice: {
@@ -290,11 +291,11 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(157,78,221,0.15)",
+    backgroundColor: theme.colors.purpleSoft,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(157,78,221,0.35)",
+    borderColor: theme.colors.borderPurple,
   },
   signText: {
     flex: 1,
