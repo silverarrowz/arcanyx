@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import {
   Pressable,
   ScrollView,
@@ -9,8 +9,10 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import {
   Bell,
+  BookOpenCheck,
   ChevronRight,
   Compass,
   Feather,
@@ -32,6 +34,8 @@ import {
   TAROT_DECK,
 } from "../../src/data/tarotCards";
 import { useHistory } from "../../src/context/HistoryContext";
+import { useDailyCard } from "../../src/hooks/useDailyCard";
+import { getCardReading } from "../../src/data/tarotReadings";
 
 function pickByDay<T>(arr: T[]): T {
   const day = new Date();
@@ -117,40 +121,24 @@ const QUICK_RITUALS: Ritual[] = [
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { streak, addItem, items } = useHistory();
-  const [flipped, setFlipped] = useState(false);
+  const router = useRouter();
+  const { streak } = useHistory();
+  const { card: dailyCard, hasDrawn, loading: dailyCardLoading } = useDailyCard();
 
   const dailyPhrase = useMemo(() => pickByDay(DAILY_PHRASES), []);
-  const cardOfTheDay = useMemo(() => pickByDay(TAROT_DECK), []);
   const energy = useMemo(() => pickByDay(ENERGY_THEMES), []);
-
   const greeting = useMemo(() => greetingForHour(new Date().getHours()), []);
   const userName = "Путник";
 
-  // Has the user already saved this card today?
-  const todayCardSaved = useMemo(() => {
-    const today = new Date();
-    return items.some(
-      (it) =>
-        it.type === "tarot" &&
-        it.cardId === cardOfTheDay.id &&
-        new Date(it.date).toDateString() === today.toDateString() &&
-        it.question === "Карта дня",
-    );
-  }, [items, cardOfTheDay.id]);
+  // Get the reading data for the drawn card (if any)
+  const dailyReading = useMemo(() => {
+    if (!dailyCard) return null;
+    return getCardReading(dailyCard);
+  }, [dailyCard]);
 
-  const handleDraw = () => {
-    if (flipped) return;
-    setFlipped(true);
-    if (!todayCardSaved) {
-      addItem({
-        type: "tarot",
-        question: "Карта дня",
-        answer: `${cardOfTheDay.nameRu} — ${cardOfTheDay.short}`,
-        cardId: cardOfTheDay.id,
-        cardName: cardOfTheDay.nameRu,
-      });
-    }
+  // Navigate to full draw ritual
+  const handleGoToDraw = () => {
+    router.push("/draw-card");
   };
 
   // Path / XP — derived from streak (placeholder formula)
@@ -249,50 +237,43 @@ export default function HomeScreen() {
             borderColor={theme.colors.borderPurple}
             style={styles.bigCard}
           >
-            <View style={styles.bigCardInner}>
-              <View style={styles.bigCardText}>
-                <View style={styles.eyebrowRow}>
-                  <Sun color={theme.colors.gold} size={14} strokeWidth={1.6} />
-                  <Text style={styles.eyebrow}>ТАРО ДНЯ</Text>
-                </View>
-                <Text style={styles.bigCardTitle}>
-                  Вытяни карту{"\n"}дня
-                </Text>
-                <Text style={styles.bigCardSub}>
-                  Получи руководство{"\n"}и ясность на сегодня.
-                </Text>
+            {/* State: Not yet drawn today OR loading */}
+            {!hasDrawn && (
+              <View style={styles.bigCardInner}>
+                <View style={styles.bigCardText}>
+                  <View style={styles.eyebrowRow}>
+                    <Sun color={theme.colors.gold} size={14} strokeWidth={1.6} />
+                    <Text style={styles.eyebrow}>ТАРО ДНЯ</Text>
+                  </View>
+                  <Text style={styles.bigCardTitle}>
+                    Вытяни карту{"\n"}дня
+                  </Text>
+                  <Text style={styles.bigCardSub}>
+                    Получи руководство{"\n"}и ясность на сегодня.
+                  </Text>
 
-                <Pressable
-                  onPress={handleDraw}
-                  style={styles.ctaWrap}
-                  testID="home-draw-card-btn"
-                >
-                  <LinearGradient
-                    colors={["#EFA0C0", "#B98BE5", "#9D7CE6"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.ctaGradient}
+                  <Pressable
+                    onPress={handleGoToDraw}
+                    style={styles.ctaWrap}
+                    testID="home-draw-card-btn"
+                    disabled={dailyCardLoading}
                   >
-                    <Text style={styles.ctaText}>
-                      {flipped ? "Карта открыта" : "Вытянуть"}
-                    </Text>
-                    <Sparkles color="#FFF7EA" size={14} strokeWidth={1.8} />
-                  </LinearGradient>
-                </Pressable>
-              </View>
+                    <LinearGradient
+                      colors={["#EFA0C0", "#B98BE5", "#9D7CE6"]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.ctaGradient}
+                    >
+                      <Text style={styles.ctaText}>
+                        {dailyCardLoading ? "Загрузка…" : "Вытянуть"}
+                      </Text>
+                      <Sparkles color="#FFF7EA" size={14} strokeWidth={1.8} />
+                    </LinearGradient>
+                  </Pressable>
+                </View>
 
-              {/* Right-side card slot */}
-              <View style={styles.bigCardArt}>
-                {flipped ? (
-                  <TarotCard
-                    card={cardOfTheDay}
-                    flipped={flipped}
-                    onFlip={() => {}}
-                    width={112}
-                    height={168}
-                    testID="card-of-the-day"
-                  />
-                ) : (
+                {/* Right-side card placeholder */}
+                <View style={styles.bigCardArt}>
                   <View style={styles.cardPlaceholder}>
                     <LinearGradient
                       colors={["#33285C", "#1B1830"]}
@@ -310,19 +291,72 @@ export default function HomeScreen() {
                       <View style={styles.tinyStar} />
                     </View>
                   </View>
-                )}
+                </View>
               </View>
-            </View>
+            )}
 
-            {flipped && (
-              <View style={styles.cardRevealRow}>
-                <Text style={styles.cardRevealName} testID="card-of-the-day-name">
-                  {cardOfTheDay.nameRu}
-                </Text>
-                <Text style={styles.cardRevealText}>
-                  {cardOfTheDay.short}
-                </Text>
-              </View>
+            {/* State: Already drawn today */}
+            {hasDrawn && dailyCard && (
+              <>
+                <View style={styles.bigCardInner}>
+                  <View style={styles.bigCardText}>
+                    <View style={styles.eyebrowRow}>
+                      <Sun color={theme.colors.gold} size={14} strokeWidth={1.6} />
+                      <Text style={styles.eyebrow}>ТВОЯ КАРТА</Text>
+                    </View>
+                    <Text style={styles.cardRevealName} testID="card-of-the-day-name">
+                      {dailyCard.nameRu}
+                    </Text>
+                    
+                    {dailyReading && (
+                      <View style={styles.energyPillSmall}>
+                        <Sparkles color={theme.colors.gold} size={10} strokeWidth={1.8} />
+                        <Text style={styles.energyPillText}>
+                          {dailyReading.energy.toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+
+                    <Pressable
+                      onPress={handleGoToDraw}
+                      style={styles.ctaWrap}
+                      testID="home-open-reading-btn"
+                    >
+                      <LinearGradient
+                        colors={["#EFA0C0", "#B98BE5", "#9D7CE6"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.ctaGradient}
+                      >
+                        <BookOpenCheck color="#FFF7EA" size={14} strokeWidth={1.8} />
+                        <Text style={styles.ctaText}>Открыть</Text>
+                      </LinearGradient>
+                    </Pressable>
+                  </View>
+
+                  {/* Right-side: actual drawn card */}
+                  <View style={styles.bigCardArt}>
+                    <TarotCard
+                      card={dailyCard}
+                      flipped={true}
+                      onFlip={() => {}}
+                      width={112}
+                      height={168}
+                      testID="card-of-the-day"
+                    />
+                  </View>
+                </View>
+
+                {/* Quote row below the card */}
+                {dailyReading && (
+                  <View style={styles.cardQuoteRow}>
+                    <Text style={styles.cardQuoteMark}>"</Text>
+                    <Text style={styles.cardQuoteText}>
+                      {dailyReading.quote}
+                    </Text>
+                  </View>
+                )}
+              </>
             )}
           </GlassCard>
 
@@ -656,22 +690,53 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.gold,
     opacity: 0.8,
   },
-  cardRevealRow: {
+  cardRevealName: {
+    color: theme.colors.gold,
+    fontFamily: theme.fonts.display,
+    fontSize: 22,
+    lineHeight: 26,
+    marginBottom: 6,
+  },
+  energyPillSmall: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    marginTop: 4,
+    marginBottom: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGold,
+    backgroundColor: "rgba(255,215,154,0.08)",
+  },
+  energyPillText: {
+    color: theme.colors.gold,
+    fontFamily: theme.fonts.bodySemi,
+    fontSize: 9,
+    letterSpacing: 1.6,
+  },
+  cardQuoteRow: {
+    flexDirection: "row",
+    gap: 6,
     paddingHorizontal: 22,
     paddingBottom: 20,
     marginTop: -4,
   },
-  cardRevealName: {
+  cardQuoteMark: {
     color: theme.colors.gold,
     fontFamily: theme.fonts.display,
-    fontSize: 18,
-    marginBottom: 4,
+    fontSize: 22,
+    lineHeight: 18,
+    marginTop: 4,
   },
-  cardRevealText: {
-    color: theme.colors.text,
+  cardQuoteText: {
+    flex: 1,
+    color: theme.colors.textDim,
     fontFamily: theme.fonts.heading,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 19,
     fontStyle: "italic",
   },
 
