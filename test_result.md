@@ -135,7 +135,7 @@ frontend:
   - task: "Home screen redesign to reference template"
     implemented: true
     working: true
-    file: "frontend/app/(tabs)/index.tsx, frontend/app/(tabs)/oracle.tsx"
+    file: "frontend/app/(tabs)/index.tsx, frontend/app/(tabs)/oracle.tsx, frontend/assets/home/bg-main.png"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
@@ -143,29 +143,29 @@ frontend:
       - working: true
         agent: "main"
         comment: |
-          Rewrote (tabs)/index.tsx to match reference screenshot template (images later):
-          * Top nav row: circular menu (testID home-menu-btn) + bell w/ notif dot (home-bell-btn)
-          * Greeting block: time-based "Доброе утро/день/вечер" + "Путник" display name +
-            sparkle + subtitle "Готов(а) настроиться на энергию дня?"
-          * Decorative hero slot (gradient + moon badge + tiny stars) as image placeholder.
-          * Big "ТАРО ДНЯ" GlassCard: sun eyebrow, "Вытяни карту дня", subtitle, pink→purple
-            gradient pill CTA (home-draw-card-btn) that flips a tilted card placeholder into
-            the real TarotCard and saves "Карта дня" to history (same logic preserved).
-          * "ЭНЕРГИЯ ДНЯ" GlassCard: day-picked title ("Принятие/Расширение…"), italic quote
-            (testID energy-phrase), right-side crystal-shape placeholder.
-          * "БЫСТРЫЕ РИТУАЛЫ" section: eyebrow + "Все ›" and 4 horizontal GlassCards
-            (Спроси Оракула/Толковать сон/Аффирмация/Намерение) with Lucide icons in tinted
-            circles — visual only for now.
-          * Bottom dual card: РИТУАЛ-СЕРИЯ (flame ring + streak days + caption) |
-            ТВОЙ ПУТЬ (Начинающий Мистик + gradient progress bar + XP + compass badge).
-          * Kept existing CosmicBackground, GlassCard, theme, TarotCard + useHistory wiring
-            (streak-badge testID, card-of-the-day-name testID still present).
-          Also fixed pre-existing web bundler crash in oracle.tsx by guarding
-          `Image.resolveAssetSource` (typeof check) so the web preview bundles again —
-          no behavior change on native.
-          Verified via screenshot on web preview: design matches reference (menu/bell,
-          greeting, hero slot, Tarot CTA, Energy card with quote, Quick Rituals row,
-          Streak + Path dual card) with existing cosmic theme + fonts.
+          Initial template redesign of (tabs)/index.tsx to match reference: top nav (menu+bell),
+          time-based greeting + "Путник" + sparkle, "Таро дня" CTA card with pink→purple pill,
+          "Энергия дня" card with quote + crystal placeholder, "Быстрые ритуалы" horizontal row,
+          and "Ритуал-серия / Твой путь" dual footer card. Kept all cosmic theme + testIDs.
+          Also fixed pre-existing web bundler crash in oracle.tsx (Image.resolveAssetSource).
+      - working: true
+        agent: "main"
+        comment: |
+          Added real hero background illustration (bg-main.png saved to
+          frontend/assets/home/bg-main.png). Replaced the placeholder hero slot with a
+          full-bleed `heroContainer` View at the top of the ScrollView containing:
+          * expo-image rendering bg-main.png with `contentFit="cover"` and
+            `contentPosition="top right"` so the cliff/character/moon stay visible at the
+            top-right while the greeting sits over the dark sky on the left.
+          * A vertical LinearGradient overlay (transparent → theme.colors.bg) fading the
+            bottom of the image into the dark theme so cards blend seamlessly.
+          * A horizontal LinearGradient (left-darken) for greeting text legibility.
+          * The topbar (menu/bell) and greeting block now flow as normal children of the
+            heroContainer (so they sit on top of the image).
+          Adjusted layout: scroll content has 0 horizontal padding, hero is full-bleed,
+          remaining cards wrapped in `contentWrap` with paddingHorizontal: 20.
+          Verified visually via screenshot — composition closely matches the reference
+          (cliff hero on right, greeting overlay on left, smooth fade into cards).
 
 metadata:
   created_by: "main_agent"

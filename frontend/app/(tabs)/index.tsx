@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 import {
   Bell,
   ChevronRight,
@@ -20,6 +21,8 @@ import {
   Sparkles,
   Sun,
 } from "lucide-react-native";
+
+const HERO_BG = require("../../assets/home/bg-main.png");
 import { theme } from "../../src/theme";
 import CosmicBackground from "../../src/components/CosmicBackground";
 import GlassCard from "../../src/components/GlassCard";
@@ -163,60 +166,77 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           testID="home-scroll"
         >
-          {/* Top nav row */}
-          <View style={styles.topBar}>
-            <Pressable
-              style={styles.iconButton}
-              hitSlop={8}
-              testID="home-menu-btn"
-            >
-              <Menu color={theme.colors.text} size={20} strokeWidth={1.8} />
-            </Pressable>
-            <Pressable
-              style={styles.iconButton}
-              hitSlop={8}
-              testID="home-bell-btn"
-            >
-              <Bell color={theme.colors.text} size={19} strokeWidth={1.8} />
-              <View style={styles.notifDot} />
-            </Pressable>
-          </View>
-
-          {/* Greeting block */}
-          <View style={styles.greetingBlock}>
-            <Text style={styles.greetingSmall} testID="home-greeting-small">
-              {greeting},
-            </Text>
-            <View style={styles.greetingNameRow}>
-              <Text style={styles.greetingName} testID="home-greeting">
-                {userName}
-              </Text>
-              <View style={styles.greetSparkle}>
-                <Sparkles color={theme.colors.gold} size={18} strokeWidth={1.6} />
-              </View>
-            </View>
-            <Text style={styles.greetingSub}>
-              Готов(а) настроиться на энергию дня?
-            </Text>
-          </View>
-
-          {/* Hero decorative slot (image later) */}
-          <View style={styles.heroSlot} testID="home-hero-slot">
-            <LinearGradient
-              colors={["rgba(239,160,192,0.20)", "rgba(53,43,98,0.0)"]}
-              start={{ x: 1, y: 0 }}
-              end={{ x: 0, y: 1 }}
+          {/* Hero with background illustration */}
+          <View style={styles.heroContainer}>
+            <Image
+              source={HERO_BG}
               style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              contentPosition="top right"
+              transition={300}
             />
-            <View style={styles.heroMoon}>
-              <Moon color={theme.colors.gold} size={22} strokeWidth={1.4} />
+            {/* Gradient fade — keeps top crisp, blends bottom into theme bg */}
+            <LinearGradient
+              colors={[
+                "rgba(18,16,34,0.0)",
+                "rgba(18,16,34,0.0)",
+                "rgba(18,16,34,0.55)",
+                theme.colors.bg,
+              ]}
+              locations={[0, 0.55, 0.85, 1]}
+              style={StyleSheet.absoluteFillObject}
+            />
+            {/* Subtle left-side darken so greeting text stays readable */}
+            <LinearGradient
+              colors={["rgba(18,16,34,0.55)", "rgba(18,16,34,0.0)"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+
+            {/* Top nav row */}
+            <View style={styles.topBar}>
+              <Pressable
+                style={styles.iconButton}
+                hitSlop={8}
+                testID="home-menu-btn"
+              >
+                <Menu color={theme.colors.text} size={20} strokeWidth={1.8} />
+              </Pressable>
+              <Pressable
+                style={styles.iconButton}
+                hitSlop={8}
+                testID="home-bell-btn"
+              >
+                <Bell color={theme.colors.text} size={19} strokeWidth={1.8} />
+                <View style={styles.notifDot} />
+              </Pressable>
             </View>
-            <View style={[styles.heroStar, { top: 20, left: 40 }]} />
-            <View style={[styles.heroStar, { top: 58, left: 140 }]} />
-            <View style={[styles.heroStar, { top: 34, right: 90 }]} />
-            <View style={[styles.heroStar, { top: 88, right: 30 }]} />
+
+            {/* Greeting block */}
+            <View style={styles.greetingBlock}>
+              <Text style={styles.greetingSmall} testID="home-greeting-small">
+                {greeting},
+              </Text>
+              <View style={styles.greetingNameRow}>
+                <Text style={styles.greetingName} testID="home-greeting">
+                  {userName}
+                </Text>
+                <View style={styles.greetSparkle}>
+                  <Sparkles
+                    color={theme.colors.gold}
+                    size={18}
+                    strokeWidth={1.6}
+                  />
+                </View>
+              </View>
+              <Text style={styles.greetingSub}>
+                Готов(а) настроиться на энергию дня?
+              </Text>
+            </View>
           </View>
 
+          <View style={styles.contentWrap}>
           {/* Tarot of the Day */}
           <GlassCard
             glow="purple"
@@ -427,6 +447,7 @@ export default function HomeScreen() {
           </GlassCard>
 
           <View style={{ height: 140 }} />
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -436,7 +457,9 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg },
   safe: { flex: 1 },
-  scroll: { paddingHorizontal: 20, paddingTop: 4 },
+  scroll: { paddingHorizontal: 0, paddingTop: 0 },
+
+  contentWrap: { paddingHorizontal: 20 },
 
   /* Top bar */
   topBar: {
@@ -445,6 +468,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 4,
     marginBottom: 18,
+    paddingHorizontal: 20,
   },
   iconButton: {
     width: 44,
@@ -472,6 +496,7 @@ const styles = StyleSheet.create({
 
   /* Greeting */
   greetingBlock: {
+    paddingHorizontal: 20,
     marginBottom: 14,
   },
   greetingSmall: {
@@ -506,40 +531,14 @@ const styles = StyleSheet.create({
     maxWidth: 260,
   },
 
-  /* Hero decorative slot */
-  heroSlot: {
-    height: 130,
-    borderRadius: 22,
-    marginTop: 6,
-    marginBottom: 18,
+  /* Hero with background illustration */
+  heroContainer: {
+    width: "100%",
+    minHeight: 460,
+    paddingTop: 4,
+    paddingBottom: 30,
+    marginBottom: -30,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    backgroundColor: "rgba(35,31,58,0.32)",
-  },
-  heroMoon: {
-    position: "absolute",
-    top: 18,
-    right: 24,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,215,154,0.08)",
-    borderWidth: 1,
-    borderColor: theme.colors.borderGold,
-  },
-  heroStar: {
-    position: "absolute",
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: theme.colors.gold,
-    opacity: 0.65,
-    shadowColor: theme.colors.gold,
-    shadowOpacity: 0.9,
-    shadowRadius: 4,
   },
 
   /* Eyebrow */
