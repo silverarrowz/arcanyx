@@ -46,7 +46,10 @@ import { useHistory } from "../../src/context/HistoryContext";
 type Phase = "idle" | "loading" | "result";
 
 const BALL_IMAGE = require("../../assets/oracle/ball2.jpg");
-const ballResolved = Image.resolveAssetSource(BALL_IMAGE);
+const ballResolved =
+  typeof (Image as any).resolveAssetSource === "function"
+    ? (Image as any).resolveAssetSource(BALL_IMAGE)
+    : null;
 const BALL_ASPECT_RATIO =
   ballResolved?.width && ballResolved?.height
     ? ballResolved.width / ballResolved.height

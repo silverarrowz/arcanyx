@@ -132,6 +132,41 @@ frontend:
           cards fills slots and reveals 3-section interpretation, reset clears slots.
           Diary entry saved correctly (e.g. "Одна карта" / «Влюблённые — Выбор сердца…»).
 
+  - task: "Home screen redesign to reference template"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/index.tsx, frontend/app/(tabs)/oracle.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: |
+          Rewrote (tabs)/index.tsx to match reference screenshot template (images later):
+          * Top nav row: circular menu (testID home-menu-btn) + bell w/ notif dot (home-bell-btn)
+          * Greeting block: time-based "Доброе утро/день/вечер" + "Путник" display name +
+            sparkle + subtitle "Готов(а) настроиться на энергию дня?"
+          * Decorative hero slot (gradient + moon badge + tiny stars) as image placeholder.
+          * Big "ТАРО ДНЯ" GlassCard: sun eyebrow, "Вытяни карту дня", subtitle, pink→purple
+            gradient pill CTA (home-draw-card-btn) that flips a tilted card placeholder into
+            the real TarotCard and saves "Карта дня" to history (same logic preserved).
+          * "ЭНЕРГИЯ ДНЯ" GlassCard: day-picked title ("Принятие/Расширение…"), italic quote
+            (testID energy-phrase), right-side crystal-shape placeholder.
+          * "БЫСТРЫЕ РИТУАЛЫ" section: eyebrow + "Все ›" and 4 horizontal GlassCards
+            (Спроси Оракула/Толковать сон/Аффирмация/Намерение) with Lucide icons in tinted
+            circles — visual only for now.
+          * Bottom dual card: РИТУАЛ-СЕРИЯ (flame ring + streak days + caption) |
+            ТВОЙ ПУТЬ (Начинающий Мистик + gradient progress bar + XP + compass badge).
+          * Kept existing CosmicBackground, GlassCard, theme, TarotCard + useHistory wiring
+            (streak-badge testID, card-of-the-day-name testID still present).
+          Also fixed pre-existing web bundler crash in oracle.tsx by guarding
+          `Image.resolveAssetSource` (typeof check) so the web preview bundles again —
+          no behavior change on native.
+          Verified via screenshot on web preview: design matches reference (menu/bell,
+          greeting, hero slot, Tarot CTA, Energy card with quote, Quick Rituals row,
+          Streak + Path dual card) with existing cosmic theme + fonts.
+
 metadata:
   created_by: "main_agent"
   version: "1.0"

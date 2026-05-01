@@ -1,5 +1,5 @@
 {
-  "summary": "Frontend-only test of mystical Russian esoteric Expo app at https://spread-reader.preview.emergentagent.com (mobile viewport 390x844). All 7 review checklist items verified end-to-end including AsyncStorage persistence across reload. No backend (per spec). No bugs found.",
+  "summary": "Frontend-only test of mystical Russian esoteric Expo app at https://screen-redesign-3.preview.emergentagent.com (mobile viewport 390x844). All 7 review checklist items verified end-to-end including AsyncStorage persistence across reload. No backend (per spec). No bugs found.",
   "backend_issues": {"critical": [], "minor": []},
   "frontend_issues": {
     "ui_bugs": [],
@@ -18,7 +18,7 @@
   "seed_data_creation": "None (3 seeded HistoryItems created automatically by HistoryProvider on first AsyncStorage hydration).",
   "retest_needed": false,
   "should_main_agent_self_test": false,
-  "context_for_next_testing_agent": "App served at EXPO_PUBLIC_BACKEND_URL (https://spread-reader.preview.emergentagent.com). Pure local-storage app, no backend APIs. All testIDs match spec exactly. Card flip animation ~700ms, oracle loading ~2s — wait accordingly. Diary outcome buttons use dynamic ids (outcome-fulfilled-<id>, outcome-failed-<id>) — query via [data-testid^='outcome-fulfilled-']. Note: after tarot reset, slots may be below scroll viewport — not a bug.",
+  "context_for_next_testing_agent": "App served at EXPO_PUBLIC_BACKEND_URL (https://screen-redesign-3.preview.emergentagent.com). Pure local-storage app, no backend APIs. All testIDs match spec exactly. Card flip animation ~700ms, oracle loading ~2s — wait accordingly. Diary outcome buttons use dynamic ids (outcome-fulfilled-<id>, outcome-failed-<id>) — query via [data-testid^='outcome-fulfilled-']. Note: after tarot reset, slots may be below scroll viewport — not a bug.",
   "rca_of_issue": "N/A — no issues found.",
   "verified_flows": [
     "App loads at / with Home tab default — home-greeting 'Звёзды благосклонны', streak-badge, energy-phrase, card-of-the-day (face down), sign-of-day all visible.",
