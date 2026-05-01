@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import {
@@ -116,6 +116,7 @@ const QUICK_RITUALS: Ritual[] = [
 ];
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
   const { streak, addItem, items } = useHistory();
   const [flipped, setFlipped] = useState(false);
 
@@ -160,7 +161,7 @@ export default function HomeScreen() {
   return (
     <View style={styles.root}>
       <CosmicBackground />
-      <SafeAreaView style={styles.safe} edges={["top"]}>
+      <SafeAreaView style={styles.safe} edges={[]}>
         <ScrollView
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
@@ -195,7 +196,12 @@ export default function HomeScreen() {
             />
 
             {/* Top nav row */}
-            <View style={styles.topBar}>
+            <View
+              style={[
+                styles.topBar,
+                { paddingTop: Math.max(insets.top, 12) },
+              ]}
+            >
               <Pressable
                 style={styles.iconButton}
                 hitSlop={8}
@@ -466,8 +472,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 4,
-    marginBottom: 18,
+    marginTop: 0,
+    marginBottom: 10,
     paddingHorizontal: 20,
   },
   iconButton: {
@@ -534,10 +540,10 @@ const styles = StyleSheet.create({
   /* Hero with background illustration */
   heroContainer: {
     width: "100%",
-    minHeight: 460,
-    paddingTop: 4,
-    paddingBottom: 30,
-    marginBottom: -30,
+    minHeight: 410,
+    paddingTop: 0,
+    paddingBottom: 20,
+    marginBottom: -40,
     overflow: "hidden",
   },
 
