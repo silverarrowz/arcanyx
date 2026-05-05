@@ -44,7 +44,7 @@ export type HistoryItem = {
 
 type HistoryContextValue = {
   items: HistoryItem[];
-  addItem: (item: Omit<HistoryItem, "id" | "date">) => void;
+  addItem: (item: Omit<HistoryItem, "id" | "date">) => string;
   setOutcome: (id: string, outcome: "fulfilled" | "failed" | null) => void;
   removeItem: (id: string) => void;
   streak: number;
@@ -114,14 +114,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
 
   const addItem = useCallback(
     (item: Omit<HistoryItem, "id" | "date">) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       setItems((prev) => [
         {
           ...item,
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          id,
           date: new Date().toISOString(),
         },
         ...prev,
       ]);
+      return id;
     },
     [],
   );

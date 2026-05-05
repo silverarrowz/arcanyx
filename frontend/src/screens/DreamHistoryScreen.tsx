@@ -60,6 +60,39 @@ function dreamIcon(key: string) {
   }
 }
 
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    d.getFullYear() === yesterday.getFullYear() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getDate() === yesterday.getDate();
+
+  const time = d.toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  if (sameDay) return `Сегодня · ${time}`;
+  if (isYesterday) return `Вчера · ${time}`;
+
+  return (
+    d.toLocaleDateString("ru-RU", {
+      day: "2-digit",
+      month: "long",
+    }) + ` · ${time}`
+  );
+}
+
 type Props = {
   embedded?: boolean;
 };

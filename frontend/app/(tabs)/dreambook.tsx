@@ -37,7 +37,6 @@ import { useRemountOnTabFocus } from "../../src/hooks/useRemountOnTabFocus";
 import { useHistory } from "../../src/context/HistoryContext";
 import {
   interpretDream,
-  type DreamInterpretResponse,
 } from "../../src/services/dreamInterpretation";
 
 const CARD_BG = require("../../assets/home/bg-dream.png");
@@ -130,7 +129,6 @@ export default function DreamBookScreen() {
   const [text, setText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<DreamInterpretResponse | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const [active, setActive] = useState<DreamBookTab>(() =>
     tab === "history" ? "history" : "interpret",
@@ -176,13 +174,14 @@ export default function DreamBookScreen() {
 
     setError(null);
     setIsLoading(true);
+    console.log("API URL:", process.env.VITE_API_URL);
+console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpret`);
     try {
       const response = await interpretDream({
         dreamText,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
-      setResult(response);
-      addItem({
+      const dreamId = addItem({
         type: "dream",
         question: "Толкование сна",
         answer: response.title,
@@ -192,6 +191,7 @@ export default function DreamBookScreen() {
         dreamAdvice: response.advice,
         dreamDisclaimer: response.disclaimer,
       });
+      router.push(`/dream-result?id=${encodeURIComponent(dreamId)}` as never);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
       const message =
@@ -203,7 +203,7 @@ export default function DreamBookScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [addItem, isLoading, text]);
+  }, [addItem, isLoading, router, text]);
 
   const symbolColW = Math.floor(
     (windowWidth - H_PAD * 2 - SYMBOL_GAP) / 2,
@@ -397,31 +397,6 @@ export default function DreamBookScreen() {
                   {error ? <Text style={styles.errorText}>{error}</Text> : null}
                 </View>
               </GlassCard>
-
-              {result ? (
-                <GlassCard
-                  borderColor={theme.colors.borderPurple}
-                  glow="purple"
-                  intensity={16}
-                  surfaceColor="rgba(98,82,142,0.18)"
-                  overlayColor="rgba(116,95,168,0.14)"
-                  style={styles.resultCard}
-                >
-                  <Text style={styles.resultTitle}>{result.title}</Text>
-                  <Text style={styles.resultBody}>{result.interpretation}</Text>
-                  {result.symbols.length > 0 ? (
-                    <View style={styles.resultSymbols}>
-                      {result.symbols.map((symbol) => (
-                        <View key={symbol} style={styles.resultChip}>
-                          <Text style={styles.resultChipText}>{symbol}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                  <Text style={styles.resultAdvice}>{result.advice}</Text>
-                  <Text style={styles.resultDisclaimer}>{result.disclaimer}</Text>
-                </GlassCard>
-              ) : null}
 
               <Text style={styles.sectionLabel}>Попробуйте темы</Text>
               <GlassCard
@@ -741,57 +716,6 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.bodyMedium,
     fontSize: 12,
   },
-  resultCard: {
-    marginBottom: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  resultTitle: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.heading,
-    fontSize: 18,
-    marginBottom: 8,
-  },
-  resultBody: {
-    color: theme.colors.textDim,
-    fontFamily: theme.fonts.body,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  resultSymbols: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 10,
-  },
-  resultChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: "rgba(246,240,255,0.06)",
-  },
-  resultChipText: {
-    color: theme.colors.lilac,
-    fontFamily: theme.fonts.bodyMedium,
-    fontSize: 11,
-  },
-  resultAdvice: {
-    marginTop: 10,
-    color: theme.colors.text,
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  resultDisclaimer: {
-    marginTop: 8,
-    color: theme.colors.textMuted,
-    fontFamily: theme.fonts.body,
-    fontSize: 11,
-    lineHeight: 16,
-  },
-
   /** Как OracleScreen.sourceTitle */
   sectionLabel: {
     color: theme.colors.lilac,

@@ -14,10 +14,10 @@ export type DreamInterpretResponse = {
   fallback: boolean;
 };
 
-const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
+const DEFAULT_API_BASE_URL = "https://mystix-production.up.railway.app";
 
 function apiBaseUrl(): string {
-  const raw = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  const raw = process.env.VITE_API_URL?.trim();
   return raw && raw.length > 0 ? raw.replace(/\/+$/, "") : DEFAULT_API_BASE_URL;
 }
 
