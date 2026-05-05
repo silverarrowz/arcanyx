@@ -15,6 +15,7 @@ import {
 } from "@expo-google-fonts/manrope";
 import { YesevaOne_400Regular } from "@expo-google-fonts/yeseva-one";
 import { View } from "react-native";
+import { DailyCardProvider } from "../src/context/DailyCardContext";
 import { HistoryProvider } from "../src/context/HistoryContext";
 import { theme } from "../src/theme";
 
@@ -43,14 +44,16 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.bg }}>
       <HistoryProvider>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: theme.colors.bg },
-            animation: "fade",
-          }}
-        />
+        <DailyCardProvider>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: theme.colors.bg },
+              animation: "fade",
+            }}
+          />
+        </DailyCardProvider>
       </HistoryProvider>
     </GestureHandlerRootView>
   );

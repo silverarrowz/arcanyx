@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { useRemountOnTabFocus } from "../../src/hooks/useRemountOnTabFocus";
 import {
   FlatList,
   Pressable,
@@ -207,6 +208,7 @@ function DiaryRow({ item }: { item: HistoryItem }) {
 
 export default function DiaryScreen() {
   const { items } = useHistory();
+  const remountKey = useRemountOnTabFocus();
 
   const sorted = useMemo(
     () =>
@@ -229,6 +231,7 @@ export default function DiaryScreen() {
         </View>
 
         <FlatList
+          key={remountKey}
           data={sorted}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}

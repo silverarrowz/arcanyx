@@ -29,10 +29,10 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { PenLine, Sparkles } from "lucide-react-native";
-import { theme } from "../../src/theme";
-import CosmicBackground from "../../src/components/CosmicBackground";
-import GlassCard from "../../src/components/GlassCard";
+import { PenLine, Sparkles, Fingerprint } from "lucide-react-native";
+import { theme } from "../theme";
+import CosmicBackground from "../components/CosmicBackground";
+import GlassCard from "../components/GlassCard";
 import {
   CATEGORY_META,
   ORACLE_SOURCE_META,
@@ -40,8 +40,8 @@ import {
   getRandomOracleAnswer,
   OracleCategory,
   OracleSource,
-} from "../../src/data/oracleAnswers";
-import { useHistory } from "../../src/context/HistoryContext";
+} from "../data/oracleAnswers";
+import { useHistory } from "../context/HistoryContext";
 
 type Phase = "idle" | "loading" | "result";
 
@@ -54,6 +54,21 @@ const BALL_ASPECT_RATIO =
   ballResolved?.width && ballResolved?.height
     ? ballResolved.width / ballResolved.height
     : 0.75;
+
+/** Шар ниже в кадре: доля ширины экрана (якорь картинки + туман/частицы). ↑ = ниже. ~0.12–0.22 */
+const ORACLE_BALL_VERTICAL_NUDGE = 0;
+/** Поднять текст ответа на шаре (доля ширины экрана; только ответ, не шар). ↑ = выше. */
+const ORACLE_ANSWER_LIFT_Y = 0;
+/** Опустить туман относительно героя (доля screenW; только туман, не частицы). ↑ = ниже. */
+const ORACLE_MIST_EXTRA_DOWN = 0.08;
+/** Компактность полосы с шаром: меньше — меньше высота героя (больше места под форму). */
+const ORACLE_HERO_HEIGHT_FRAC = 0.9;
+const ORACLE_HERO_MAX_SCREEN_FRAC = 0.86;
+/** Круговая зона long-press на шаре: доля ширины экрана и героя; ↑ = крупнее hit-target. */
+const ORACLE_BALL_HIT_SIZE_FRAC_W = 0.76;
+const ORACLE_BALL_HIT_MAX_FRAC_HERO_H = 0.52;
+const ORACLE_BALL_HIT_BOTTOM_FRAC = 0.28;
+const ORACLE_BALL_LONG_PRESS_MS = 450;
 
 const ORACLE_SOURCE_BACKGROUNDS: Record<OracleSource, number> = {
   universe: require("../../assets/oracle/bg1.png"),
@@ -261,9 +276,19 @@ function AccentRadialMist({
   );
 }
 
-export default function OracleScreen() {
-  const { width: screenW } = Dimensions.get("window");
-  const heroHeight = screenW / BALL_ASPECT_RATIO;
+type OracleScreenProps = {
+  /** When true, top safe area is handled by the parent (e.g. Gadania segment header). */
+  embedded?: boolean;
+};
+
+export default function OracleScreen({ embedded = false }: OracleScreenProps) {
+  const { width: screenW, height: screenH } = Dimensions.get("window");
+  const heroNatural = screenW / BALL_ASPECT_RATIO;
+  const heroHeight = Math.min(
+    heroNatural * ORACLE_HERO_HEIGHT_FRAC,
+    screenH * ORACLE_HERO_MAX_SCREEN_FRAC,
+  );
+  const heroImageNudgeY = screenW * ORACLE_BALL_VERTICAL_NUDGE;
 
   const { addItem } = useHistory();
   const [question, setQuestion] = useState("");
@@ -322,9 +347,18 @@ export default function OracleScreen() {
     }
   }, [phase, fogHue, loadingLayer, resultLayer, answerOpacity]);
 
+  const answerLiftPx = screenW * ORACLE_ANSWER_LIFT_Y;
+
   const answerWrapStyle = useAnimatedStyle(() => ({
     opacity: answerOpacity.value,
-    transform: [{ translateY: (1 - answerOpacity.value) * 12 }],
+    transform: [
+      {
+        translateY:
+          heroImageNudgeY -
+          answerLiftPx +
+          (1 - answerOpacity.value) * 12,
+      },
+    ],
   }));
 
   const askUniverse = () => {
@@ -366,16 +400,38 @@ export default function OracleScreen() {
 
   const meta = result ? CATEGORY_META[result.category] : null;
   const activeSourceMeta = ORACLE_SOURCE_META[selectedSource];
+  /** Only idle: question/source are fixed once the user asks until they start a new round. */
+  const formUnlocked = phase === "idle";
   const resultSourceMeta = result
     ? ORACLE_SOURCE_META[result.source]
     : activeSourceMeta;
 
   const mistOrbSize = screenW * 1.18;
+  const mistShiftY =
+    heroImageNudgeY + screenW * ORACLE_MIST_EXTRA_DOWN;
+
+  const ballHitSize = Math.min(
+    screenW * ORACLE_BALL_HIT_SIZE_FRAC_W,
+    heroHeight * ORACLE_BALL_HIT_MAX_FRAC_HERO_H,
+  );
+  const ballHitBottom = heroHeight * ORACLE_BALL_HIT_BOTTOM_FRAC;
+
+  const onBallLongPress = () => {
+    if (phase === "loading") return;
+    if (phase === "result") {
+      reset();
+    } else {
+      askUniverse();
+    }
+  };
 
   return (
     <View style={styles.root}>
       <CosmicBackground />
-      <SafeAreaView style={styles.safe} edges={["top"]}>
+      <SafeAreaView
+        style={styles.safe}
+        edges={embedded ? ["bottom"] : ["top"]}
+      >
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -385,23 +441,39 @@ export default function OracleScreen() {
               contentContainerStyle={styles.scroll}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
+              automaticallyAdjustKeyboardInsets
             >
               <View style={[styles.hero, { height: heroHeight }]}>
-                <Animated.View style={styles.heroImageLayer}>
+                {/* Слой выше героя на nudge: прижат снизу — шар ниже в кадре без пустой полосы сверху */}
+                <Animated.View
+                  style={[
+                    styles.heroImageLayerAnchored,
+                    { height: heroHeight + heroImageNudgeY },
+                  ]}
+                >
                   <Image
                     source={BALL_IMAGE}
                     style={styles.heroImage}
                     resizeMode="cover"
                   />
                 </Animated.View>
-                <View style={styles.particleLayer} pointerEvents="none">
-                  {ORACLE_PARTICLES.map((particle, index) => (
-                    <OracleParticle key={index} {...particle} />
-                  ))}
+                <View
+                  style={[
+                    styles.heroBallShift,
+                    { transform: [{ translateY: heroImageNudgeY }] },
+                  ]}
+                  pointerEvents="none"
+                >
+                  <View style={styles.particleLayer} pointerEvents="none">
+                    {ORACLE_PARTICLES.map((particle, index) => (
+                      <OracleParticle key={index} {...particle} />
+                    ))}
+                  </View>
                 </View>
+                {/* Bottom: image → bg (same feather as before, top stays clear for the top fade) */}
                 <LinearGradient
                   colors={[
-                    "rgba(18,16,34,0.18)",
+                    "rgba(18,16,34,0)",
                     "rgba(18,16,34,0.08)",
                     theme.colors.bg,
                   ]}
@@ -409,51 +481,114 @@ export default function OracleScreen() {
                   style={styles.heroFade}
                   pointerEvents="none"
                 />
+                {/* Top: bg → transparent, mirrors the bottom blend into theme bg */}
+                <LinearGradient
+                  colors={[theme.colors.bg, "rgba(18,16,34,0)"]}
+                  locations={[0, 1]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 0.32 }}
+                  style={styles.heroFade}
+                  pointerEvents="none"
+                />
                 <View style={styles.heroCopy}>
-                  <Text style={styles.eyebrow}>ORACLE BALL</Text>
+                  {/* <Text style={styles.eyebrow}>ORACLE BALL</Text> */}
                   <View style={styles.heroDivider}>
                     <View style={styles.heroDividerLine} />
                     <Text style={styles.heroDividerStar}>✦</Text>
                     <View style={styles.heroDividerLine} />
                   </View>
-                  <Text style={styles.title}>Ask the Oracle</Text>
+                  <Text style={styles.title}>Спроси Оракула</Text>
                   <Text style={styles.subtitle}>
-                    Focus on your question and let the Oracle reveal the answer.
+                   Задай вопрос, на который можно ответить &quot;да&quot; или &quot;нет&quot;
                   </Text>
                 </View>
 
-                <CyclingRadialMist
-                  size={mistOrbSize}
-                  fogHue={fogHue}
-                  loadingLayer={loadingLayer}
-                />
-
-                {meta && (
-                  <AccentRadialMist
+                <View
+                  style={[
+                    styles.heroBallShift,
+                    { transform: [{ translateY: mistShiftY }] },
+                  ]}
+                  pointerEvents="none"
+                >
+                  <CyclingRadialMist
                     size={mistOrbSize}
-                    color={resultSourceMeta.aura}
-                    resultLayer={resultLayer}
+                    fogHue={fogHue}
+                    loadingLayer={loadingLayer}
                   />
-                )}
+
+                  {meta && (
+                    <AccentRadialMist
+                      size={mistOrbSize}
+                      color={resultSourceMeta.aura}
+                      resultLayer={resultLayer}
+                    />
+                  )}
+                </View>
 
                 {phase === "result" && result && meta && (
-                  <Animated.View style={[styles.answerOverlay, answerWrapStyle]}>
-                   
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.answerOverlay, answerWrapStyle]}
+                  >
                     <Text style={styles.answerOnBall} testID="oracle-answer">
-                      «{result.answer}»
+                      {result.answer}
                     </Text>
                   </Animated.View>
+                )}
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Шар оракула"
+                  accessibilityHint="Удерживайте, чтобы узнать ответ или начать заново"
+                  testID="oracle-ball-longpress"
+                  disabled={phase === "loading"}
+                  delayLongPress={ORACLE_BALL_LONG_PRESS_MS}
+                  onLongPress={onBallLongPress}
+                  style={[
+                    styles.ballHitZone,
+                    {
+                      width: ballHitSize,
+                      height: ballHitSize,
+                      borderRadius: ballHitSize / 2,
+                      bottom: ballHitBottom,
+                    },
+                  ]}
+                />
+
+                {phase === "idle" && (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.ballHintWrap,
+                      {
+                        width: ballHitSize,
+                        height: ballHitSize,
+                        bottom: ballHitBottom,
+                      },
+                    ]}
+                  >
+                    <PulsingOracleBallHintIcon />
+                    <Text style={styles.ballHintLabel}>Нажми и удерживай</Text>
+                  </View>
                 )}
               </View>
 
               <View style={styles.content}>
                 <GlassCard
+                  glow="purple"
                   borderColor={theme.colors.borderPurple}
-                  style={styles.inputCard}
+                  intensity={8}
+                  surfaceColor="rgba(98,82,142,0.22)"
+                  overlayColor="rgba(116,95,168,0.18)"
+                  style={[styles.inputCard, !formUnlocked && styles.inputCardFrozen]}
                 >
                   <View style={styles.inputLabelRow}>
                     <Sparkles color={theme.colors.gold} size={14} />
-                    <Text style={styles.inputLabel}>Твой вопрос</Text>
+                    <Text style={styles.inputLabel}>
+                      {phase === "result"
+                        ? "Твой вопрос"
+                        : "Сформулируй вопрос"}
+                    </Text>
                   </View>
                   <View style={styles.inputInner}>
                     <TextInput
@@ -462,9 +597,12 @@ export default function OracleScreen() {
                       onChangeText={setQuestion}
                       placeholder="Стоит ли начинать этот проект?"
                       placeholderTextColor={theme.colors.textDim}
-                      style={styles.input}
+                      style={[
+                        styles.input,
+                        !formUnlocked && styles.inputReadOnly,
+                      ]}
                       multiline
-                      editable={phase !== "loading"}
+                      editable={formUnlocked}
                     />
                     <PenLine color={theme.colors.lilac} size={18} />
                   </View>
@@ -476,23 +614,37 @@ export default function OracleScreen() {
                   testID="oracle-ask-btn"
                   style={({ pressed }) => [
                     styles.askButton,
-                    phase === "loading" && { opacity: 0.6 },
-                    pressed && { transform: [{ scale: 0.98 }] },
+                    phase === "loading" && styles.askButtonMuted,
+                    pressed &&
+                      phase !== "loading" && { transform: [{ scale: 0.98 }] },
                   ]}
                 >
                   <LinearGradient
-                    colors={[theme.colors.pink, theme.colors.mauve]}
+                    colors={
+                      phase === "loading"
+                        ? theme.gradients.primaryCtaMuted
+                        : theme.gradients.primaryCta
+                    }
                     start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
+                    end={{ x: 1, y: 0 }}
                     style={styles.askButtonGradient}
                   >
-                    <Sparkles color={theme.colors.text} size={18} />
-                    <Text style={styles.askButtonText}>
+                    <Sparkles
+                      color={phase === "loading" ? "#C9BED6" : "#FFF7EA"}
+                      size={phase === "loading" ? 14 : 18}
+                      strokeWidth={1.8}
+                    />
+                    <Text
+                      style={[
+                        styles.askButtonText,
+                        phase === "loading" && styles.askButtonTextMuted,
+                      ]}
+                    >
                       {phase === "loading"
                         ? `Слушаю: ${activeSourceMeta.shortLabel}…`
                         : phase === "result"
                           ? "Задать новый вопрос"
-                          : "Ask the Oracle"}
+                          : "Узнать ответ"}
                     </Text>
                   </LinearGradient>
                 </Pressable>
@@ -506,7 +658,7 @@ export default function OracleScreen() {
                     return (
                       <Pressable
                         key={source.id}
-                        disabled={phase === "loading"}
+                        disabled={!formUnlocked}
                         onPress={() => {
                           setSelectedSource(source.id);
                           Haptics.selectionAsync().catch(() => {});
@@ -516,7 +668,7 @@ export default function OracleScreen() {
                           selected && styles.sourceCardActiveGlow,
                           selected && { shadowColor: source.color },
                           pressed && { transform: [{ scale: 0.98 }] },
-                          phase === "loading" && { opacity: 0.55 },
+                          !formUnlocked && { opacity: 0.55 },
                         ]}
                       >
                         <View style={styles.sourceCardInner}>
@@ -570,7 +722,7 @@ export default function OracleScreen() {
                 </View>
               </View>
 
-              <View style={{ height: 140 }} />
+              <View style={{ height: 72 }} />
               </View>
             </ScrollView>
           </TouchableWithoutFeedback>
@@ -580,6 +732,19 @@ export default function OracleScreen() {
   );
 }
 
+/** Общая типографика текста на шаре (ответ и подсказка «удерживай»). */
+const oracleBallTextBase = {
+  color: theme.colors.text,
+  fontFamily: theme.fonts.heading,
+  fontSize: 22,
+  lineHeight: 28,
+  fontStyle: "italic" as const,
+  textAlign: "center" as const,
+  textShadowColor: "rgba(0,0,0,0.35)",
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 5,
+};
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg },
   safe: { flex: 1 },
@@ -588,9 +753,17 @@ const styles = StyleSheet.create({
     width: "100%",
     overflow: "hidden",
   },
-  heroImageLayer: {
+  /** Прижат к низу героя; height задаётся inline как heroHeight + nudge — лишнее уходит за верхний край и клипится. */
+  heroImageLayerAnchored: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  /** Частицы и туман: тот же вертикальный сдвиг, что и визуально у шара после anchor. */
+  heroBallShift: {
     ...StyleSheet.absoluteFillObject,
-    top: 0,
+    pointerEvents: "none",
   },
   heroImage: {
     width: "100%",
@@ -615,7 +788,7 @@ const styles = StyleSheet.create({
   },
   heroCopy: {
     paddingHorizontal: 24,
-    paddingTop: 28,
+    paddingTop: 14,
     alignItems: "center",
   },
   eyebrow: {
@@ -629,7 +802,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 26,
+    marginBottom: 14,
     opacity: 0.68,
   },
   heroDividerLine: {
@@ -652,19 +825,22 @@ const styles = StyleSheet.create({
   subtitle: {
     color: theme.colors.lilac,
     fontFamily: theme.fonts.body,
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 20,
     textAlign: "center",
-    marginTop: 8,
-    maxWidth: 260,
+    marginTop: 6,
+    maxWidth: 200,
   },
   content: {
     paddingHorizontal: 24,
-    marginTop: -62,
+    marginTop: -64,
   },
   inputCard: {
     marginBottom: 20,
     borderRadius: 22,
+  },
+  inputCardFrozen: {
+    opacity: 0.92,
   },
   inputLabelRow: {
     flexDirection: "row",
@@ -696,6 +872,9 @@ const styles = StyleSheet.create({
     maxHeight: 100,
     paddingTop: 0,
     paddingBottom: 0,
+  },
+  inputReadOnly: {
+    color: theme.colors.lilac,
   },
   sourceSection: {
     marginTop: 26,
@@ -777,83 +956,109 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 22,
-    paddingTop: 0,
+    marginTop: -20,
   },
-  categoryBadge: {
+  ballHitZone: {
+    position: "absolute",
+    alignSelf: "center",
+    backgroundColor: "transparent",
+  },
+  ballHintWrap: {
+    position: "absolute",
+    alignSelf: "center",
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderRadius: 999,
-    marginBottom: 12,
   },
-  categoryText: {
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 10,
-    letterSpacing: 2,
+  ballHintIconWrap: {
+    opacity: 0.92,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.45,
+    shadowRadius: 5,
+    elevation: 4,
   },
-  categoryHint: {
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 11,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    marginBottom: 10,
-    textShadowColor: "rgba(0,0,0,0.6)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 10,
+  ballHintLabel: {
+    ...oracleBallTextBase,
+    fontSize: 18,
+    lineHeight: 20,
+    marginTop: 20,
+    maxWidth: "40%",
   },
   answerOnBall: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.heading,
-    fontSize: 21,
-    lineHeight: 28,
-    fontStyle: "italic",
-    textAlign: "center",
-    textShadowColor: "rgba(0,0,0,0.35)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 5,
-    maxWidth: "50%",
-  },
-  answerSubOnBall: {
-    color: "rgba(247,244,238,0.82)",
-    fontSize: 10,
-    fontFamily: theme.fonts.body,
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
-    marginTop: 14,
-    textAlign: "center",
-    textShadowColor: "rgba(0,0,0,0.6)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 10,
+    ...oracleBallTextBase,
+    maxWidth: "40%",
   },
   askButton: {
     borderRadius: theme.radius.pill,
-    overflow: "hidden",
-    shadowColor: theme.colors.mauve,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
+    backgroundColor: "#EFA0C0",
+    ...theme.shadows.ctaPrimary,
+    shadowColor: "#F7B7D6",
+    shadowOpacity: 0.62,
     shadowRadius: 18,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 18,
     marginTop: 2,
     alignSelf: "center",
     width: "82%",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+  },
+  askButtonMuted: {
+    ...theme.shadows.ctaMuted,
   },
   askButtonGradient: {
     minHeight: 56,
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: theme.radius.pill,
+    overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
   },
   askButtonText: {
-    color: theme.colors.text,
+    color: "#FFF7EA",
     fontFamily: theme.fonts.bodySemi,
     fontSize: 15,
     letterSpacing: 0.4,
     textAlign: "center",
   },
+  askButtonTextMuted: {
+    color: "#D8CFDF",
+  },
 });
+
+function PulsingOracleBallHintIcon() {
+  const pulse = useSharedValue(1);
+
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1.09, {
+          duration: 820,
+          easing: Easing.inOut(Easing.sin),
+        }),
+        withTiming(1, {
+          duration: 820,
+          easing: Easing.inOut(Easing.sin),
+        }),
+      ),
+      -1,
+      false,
+    );
+    return () => cancelAnimation(pulse);
+  }, [pulse]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pulse.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[styles.ballHintIconWrap, animatedStyle]}
+      accessibilityElementsHidden
+    >
+    <Fingerprint size={42} color={theme.colors.gold} strokeWidth={1.6}/>
+    </Animated.View>
+  );
+}

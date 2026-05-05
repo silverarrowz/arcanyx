@@ -4,6 +4,7 @@ const path = require('path');
 const { FileStore } = require('metro-cache');
 
 const config = getDefaultConfig(__dirname);
+const { transformer, resolver } = config;
 
 // Use a stable on-disk store (shared across web/android)
 const root = process.env.METRO_CACHE_ROOT || path.join(__dirname, '.metro-cache');
@@ -11,6 +12,16 @@ config.cacheStores = [
   new FileStore({ root: path.join(root, 'cache') }),
 ];
 
+config.transformer = {
+  ...transformer,
+  babelTransformerPath: require.resolve("react-native-svg-transformer/expo"),
+};
+
+config.resolver = {
+  ...resolver,
+  assetExts: resolver.assetExts.filter((ext) => ext !== "svg"),
+  sourceExts: [...resolver.sourceExts, "svg"],
+};
 
 // // Exclude unnecessary directories from file watching
 // config.watchFolders = [__dirname];

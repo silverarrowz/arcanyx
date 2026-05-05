@@ -5,17 +5,23 @@ import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import { PlatformPressable } from "@react-navigation/elements";
 import type { BottomTabBarButtonProps } from "@react-navigation/bottom-tabs";
-import { Sparkles, Eye, Layers, BookOpen } from "lucide-react-native";
+import { Wand2 } from "lucide-react-native";
+import {
+  DiaryTabIcon,
+  DreamTabIcon,
+  HomeTabIcon,
+} from "../../src/components/icons/TabIcons";
 import { theme } from "../../src/theme";
 
 type IconProps = { color: string; focused: boolean };
+type TabIconComponent = React.ComponentType<Record<string, unknown>>;
 
 function TabBarIcon({
   Icon,
   color,
   focused,
   label,
-}: IconProps & { Icon: any; label: string }) {
+}: IconProps & { Icon: TabIconComponent; label: string }) {
   return (
     <View style={styles.iconWrap}>
       <View style={[styles.activePill, focused && styles.activePillFocused]}>
@@ -28,7 +34,13 @@ function TabBarIcon({
           />
         )}
         <View style={styles.iconCircle}>
-          <Icon color={color} size={focused ? 22 : 20} strokeWidth={focused ? 2 : 1.6} />
+          <Icon
+            color={color}
+            width={focused ? 22 : 20}
+            height={focused ? 22 : 20}
+            size={focused ? 22 : 20}
+            strokeWidth={focused ? 2 : 1.6}
+          />
           <Text
             style={[
               styles.iconLabel,
@@ -82,7 +94,7 @@ export default function TabsLayout() {
           tabBarButtonTestID: "tab-home",
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon
-              Icon={Sparkles}
+              Icon={HomeTabIcon}
               color={color}
               focused={focused}
               label="Сегодня"
@@ -91,31 +103,31 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="oracle"
+        name="gadania"
         options={{
-          title: "Оракул",
-          tabBarButtonTestID: "tab-oracle",
+          title: "Гадания",
+          tabBarButtonTestID: "tab-gadania",
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon
-              Icon={Eye}
+              Icon={Wand2}
               color={color}
               focused={focused}
-              label="Оракул"
+              label="Гадания"
             />
           ),
         }}
       />
       <Tabs.Screen
-        name="tarot"
+        name="dreambook"
         options={{
-          title: "Таро",
-          tabBarButtonTestID: "tab-tarot",
+          title: "Сонник",
+          tabBarButtonTestID: "tab-dreambook",
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon
-              Icon={Layers}
+              Icon={DreamTabIcon}
               color={color}
               focused={focused}
-              label="Таро"
+              label="Сонник"
             />
           ),
         }}
@@ -127,7 +139,7 @@ export default function TabsLayout() {
           tabBarButtonTestID: "tab-diary",
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon
-              Icon={BookOpen}
+              Icon={DiaryTabIcon}
               color={color}
               focused={focused}
               label="Дневник"
@@ -203,7 +215,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   iconLabel: {
-    fontSize: 10,
+    fontSize: 9,
     fontFamily: theme.fonts.bodyMedium,
     marginTop: 3,
     letterSpacing: 0.5,

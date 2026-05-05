@@ -19,7 +19,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -80,8 +80,21 @@ function pickThree(deck: TarotCardType[], excludeId?: string): TarotCardType[] {
 export default function DrawCardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { card: storedCard, hasDrawn, loading, error, saveCard } = useDailyCard();
+  const {
+    card: storedCard,
+    hasDrawn,
+    loading,
+    error,
+    saveCard,
+    refresh: refreshDailyCard,
+  } = useDailyCard();
   const { addItem } = useHistory();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshDailyCard();
+    }, [refreshDailyCard]),
+  );
 
   // Three random face-down candidates, picked once per session.
   const threeCards = useMemo(() => pickThree(TAROT_DECK, storedCard?.id), [storedCard?.id]);
@@ -219,6 +232,7 @@ export default function DrawCardScreen() {
             contentContainerStyle={styles.scroll}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
           >
             {phase === "loading" && (
               <View style={styles.center}>

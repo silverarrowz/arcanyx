@@ -35,6 +35,9 @@ export const theme = {
     warm: ["#FFD79A", "#EFA0C0"],
     oracle: ["#33245E", "#7B4CC2", "#EFA0C0"],
     cardBack: ["#33285C", "#1B1830", "#121022"],
+    /** Главные CTA (главная, оракул): розово‑лавандовый тройной градиент. */
+    primaryCta: ["#EFA0C0", "#B98BE5", "#9D7CE6"] as [string, string, string],
+    primaryCtaMuted: ["#756A8F", "#7D7494", "#847888"] as [string, string, string],
   },
   radius: {
     sm: 12,
@@ -80,6 +83,22 @@ export const theme = {
       shadowOpacity: 0.22,
       shadowRadius: 20,
       elevation: 10,
+    },
+    /** Свечение розово‑лавандовое вокруг основных CTA (главная, оракул). */
+    ctaPrimary: {
+      shadowColor: "#F5B8D4",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.52,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    /** Приглушённое свечение — заблокированный CTA / loading оракула. */
+    ctaMuted: {
+      shadowColor: "#E598BE",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.32,
+      shadowRadius: 18,
+      elevation: 9,
     },
   },
 };

@@ -1,48 +1,64 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AppState,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
+  useWindowDimensions,
   View,
+  type ImageSourcePropType,
 } from "react-native";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import Svg, { Defs, Mask, RadialGradient, Rect, Stop } from "react-native-svg";
 import {
   Bell,
   BookOpenCheck,
-  ChevronRight,
   Compass,
-  Feather,
   Flame,
-  Flower2,
   Menu,
   Moon,
   Sparkles,
   Sun,
 } from "lucide-react-native";
-
-const HERO_BG = require("../../assets/home/bg-main.png");
-const ENERGY_BG = require("../../assets/home/bg-energy.png");
 import { theme } from "../../src/theme";
 import CosmicBackground from "../../src/components/CosmicBackground";
 import GlassCard from "../../src/components/GlassCard";
+import SparkleField from "../../src/components/Sparkles";
 import TarotCard from "../../src/components/TarotCard";
-import {
-  DAILY_PHRASES,
-  TAROT_DECK,
-} from "../../src/data/tarotCards";
+import { DAILY_PHRASES } from "../../src/data/tarotCards";
 import { useHistory } from "../../src/context/HistoryContext";
-import { useDailyCard } from "../../src/hooks/useDailyCard";
+import { todayKey, useDailyCard } from "../../src/hooks/useDailyCard";
 import { getCardReading } from "../../src/data/tarotReadings";
 
-function pickByDay<T>(arr: T[]): T {
-  const day = new Date();
+const HERO_BG = require("../../assets/home/bg-main.png");
+const ENERGY_BG = require("../../assets/home/bg-energy.png");
+const DREAM_BG = require("../../assets/home/bg-dream.png");
+const TAROT_CARD_BACK = require("../../assets/tarot/card-back.png");
+const QR_ORACLE = require("../../assets/home/qr-ball.png");
+const QR_DREAMS = require("../../assets/home/qr-dream.png");
+const QR_AFFIRM = require("../../assets/home/qr-aff.png");
+const QR_TAROT = require("../../assets/home/qr-tarot.png");
+
+function pickByDay<T>(arr: T[], dayKey: string): T {
+  const [year, month, date] = dayKey.split("-").map(Number);
   const idx =
-    (day.getFullYear() * 372 + day.getMonth() * 31 + day.getDate()) %
-    arr.length;
+    (year * 372 + (month - 1) * 31 + date) % arr.length;
   return arr[idx];
 }
 
@@ -55,81 +71,429 @@ function greetingForHour(h: number): string {
 
 const ENERGY_THEMES = [
   {
-    title: "Расширение\nи Рост",
+    title: "Развитие\nи Рост",
     quote: "То, что ты взращиваешь сегодня, расцветёт твоим завтра.",
+    gradientRgb: [76, 168, 124] as const,
   },
   {
     title: "Ясность\nи Фокус",
     quote: "Тишина внутри — лучший компас для внешнего пути.",
+    gradientRgb: [88, 156, 214] as const,
   },
   {
     title: "Принятие\nи Поток",
     quote: "Когда ты перестаёшь бороться, вселенная начинает вести.",
+    gradientRgb: [72, 178, 196] as const,
   },
   {
     title: "Любовь\nи Мягкость",
     quote: "Нежность к себе — это магия, которую ты несёшь в мир.",
+    gradientRgb: [214, 128, 168] as const,
   },
   {
     title: "Сила\nи Смелость",
-    quote: "Каждый шаг в неизвестность — это шаг к самой себе.",
+    quote: "Каждый шаг в неизвестность — это шаг к самому себе.",
+    gradientRgb: [214, 96, 108] as const,
+  },
+  {
+    title: "Интуиция\nи Доверие",
+    quote: "Твой внутренний голос знает путь раньше, чем разум его понимает.",
+    gradientRgb: [108, 90, 214] as const,
+  },
+  {
+    title: "Трансформация\nи Обновление",
+    quote: "То, что отпускается, освобождает место для нового.",
+    gradientRgb: [168, 88, 196] as const,
+  },
+  {
+    title: "Гармония\nи Баланс",
+    quote: "Равновесие приходит, когда ты позволяешь всему быть.",
+    gradientRgb: [120, 172, 140] as const,
+  },
+  {
+    title: "Осознанность\nи Присутствие",
+    quote: "Настоящий момент — единственная точка силы.",
+    gradientRgb: [212, 164, 96] as const,
+  },
+  {
+    title: "Открытость\nи Возможности",
+    quote: "Мир раскрывается перед тем, кто готов его увидеть.",
+    gradientRgb: [96, 168, 228] as const,
+  },
+  {
+    title: "Свобода\nи Лёгкость",
+    quote: "Иногда самый сильный шаг — это позволить уйти.",
+    gradientRgb: [176, 168, 224] as const,
+  },
+  {
+    title: "Вдохновение\nи Творчество",
+    quote: "Идеи приходят туда, где им дают пространство дышать.",
+    gradientRgb: [186, 112, 214] as const,
+  },
+  {
+    title: "Защита\nи Границы",
+    quote: "Сохраняя себя, ты усиливаешь свою энергию.",
+    gradientRgb: [96, 116, 176] as const,
+  },
+  {
+    title: "Тишина\nи Внутренний Мир",
+    quote: "В тишине ты находишь ответы, которых не слышно в шуме.",
+    gradientRgb: [88, 96, 156] as const,
+  },
+  {
+    title: "Движение\nи Путь",
+    quote: "Даже маленький шаг запускает большие перемены.",
+    gradientRgb: [214, 140, 88] as const,
+  },
+  {
+    title: "Благодарность\nи Изобилие",
+    quote: "Ценя то, что есть, ты открываешь двери для большего.",
+    gradientRgb: [212, 176, 96] as const,
+  },
+  {
+    title: "Чистота\nи Намерение",
+    quote: "Чёткое намерение формирует ясную реальность.",
+    gradientRgb: [188, 180, 214] as const,
+  },
+  {
+    title: "Синхроничность\nи Знаки",
+    quote: "Мир подаёт сигналы тем, кто готов их замечать.",
+    gradientRgb: [152, 112, 214] as const,
+  },
+  {
+    title: "Принятие\nи Исцеление",
+    quote: "Приняв себя, ты начинаешь мягко меняться.",
+    gradientRgb: [96, 188, 168] as const,
+  },
+  {
+    title: "Свет\nи Раскрытие",
+    quote: "То, что скрыто, стремится быть увиденным.",
+    gradientRgb: [232, 196, 120] as const,
   },
 ];
+
+/** Тёмная база под оверлей — светлые accent-RGB смешиваются с ней, чтобы не «съедать» светлый текст. */
+const ENERGY_OVERLAY_BASE: readonly [number, number, number] = [35, 31, 58];
+
+function srgbChannelToLinear(c: number): number {
+  const x = c / 255;
+  return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+}
+
+function relativeLuminance(rgb: readonly [number, number, number]): number {
+  return (
+    0.2126 * srgbChannelToLinear(rgb[0]) +
+    0.7152 * srgbChannelToLinear(rgb[1]) +
+    0.0722 * srgbChannelToLinear(rgb[2])
+  );
+}
+
+function mixRgb(
+  from: readonly [number, number, number],
+  to: readonly [number, number, number],
+  t: number,
+): [number, number, number] {
+  return [
+    Math.round(from[0] + (to[0] - from[0]) * t),
+    Math.round(from[1] + (to[1] - from[1]) * t),
+    Math.round(from[2] + (to[2] - from[2]) * t),
+  ];
+}
+
+/** Светлые темы дают слишком светлый левый столбец градиента — подмешиваем surface-тёмноту. */
+function energyOverlayRgb(rgb: readonly [number, number, number]): [number, number, number] {
+  const lum = relativeLuminance(rgb);
+  const t = Math.max(0, Math.min(1, (lum - 0.36) / 0.44));
+  if (t <= 0) return [rgb[0], rgb[1], rgb[2]];
+  const blend = 0.22 + t * 0.78;
+  return mixRgb(rgb, ENERGY_OVERLAY_BASE, blend);
+}
+
+function energyCardGradient(
+  rgb: readonly [number, number, number],
+): readonly [string, string, string, string] {
+  const [r, g, b] = energyOverlayRgb(rgb);
+  return [
+    `rgba(${r}, ${g}, ${b}, 0.95)`,
+    `rgba(${r}, ${g}, ${b}, 0.95)`,
+    `rgba(${r}, ${g}, ${b}, 0.75)`,
+    `rgba(${r}, ${g}, ${b}, 0)`,
+  ];
+}
 
 type Ritual = {
   key: string;
   title: string;
   subtitle: string;
-  Icon: React.ComponentType<{ color: string; size: number; strokeWidth?: number }>;
-  gradient: [string, string];
-  tint: string;
+  qrImage: ImageSourcePropType;
+  accent: [string, string, string];
+  /** Базовый цвет карточки (под иллюстрацией). */
+  surfaceBg: string;
+  /** Второй стоп градиента под фото — усиливает узнаваемость ритуала. */
+  surfaceWashEnd: string;
 };
 
 const QUICK_RITUALS: Ritual[] = [
   {
+    key: "daily-spread",
+    title: "Дневной расклад",
+    subtitle: "Расклад на сегодня",
+    qrImage: QR_TAROT,
+    accent: ["#FFD79A", "#EFA0C0", "#9D7CE6"],
+    surfaceBg: "#342038",
+    surfaceWashEnd: "rgba(239,160,192,0.38)",
+  },
+  {
     key: "oracle",
-    title: "Спроси\nОракула",
+    title: "Спроси Оракула",
     subtitle: "Магический шар",
-    Icon: Sparkles,
-    gradient: ["rgba(157,124,230,0.38)", "rgba(196,123,234,0.18)"],
-    tint: "#C47BEA",
+    qrImage: QR_ORACLE,
+    accent: ["#F4A6CA", "#9D7CE6", "#FFD79A"],
+    surfaceBg: "#241a3e",
+    surfaceWashEnd: "rgba(239, 211, 96, 0.42)",
   },
   {
     key: "dream",
-    title: "Толковать\nсон",
+    title: "Истолковать сон",
     subtitle: "Найди ясность",
-    Icon: Moon,
-    gradient: ["rgba(67,86,255,0.32)", "rgba(157,124,230,0.16)"],
-    tint: "#9D7CE6",
+    qrImage: QR_DREAMS,
+    accent: ["#CFC6E8", "#7B4CC2", "#EFA0C0"],
+    surfaceBg: "#1c1a34",
+    surfaceWashEnd: "rgba(123,76,194,0.36)",
   },
   {
     key: "affirm",
-    title: "Аффирмация\nдня",
+    title: "Аффирмация дня",
     subtitle: "Подними энергию",
-    Icon: Feather,
-    gradient: ["rgba(255,215,154,0.34)", "rgba(239,160,192,0.18)"],
-    tint: "#FFD79A",
-  },
-  {
-    key: "intent",
-    title: "Задать\nнамерение",
-    subtitle: "Сфокусируй ум",
-    Icon: Flower2,
-    gradient: ["rgba(239,160,192,0.38)", "rgba(157,124,230,0.18)"],
-    tint: "#EFA0C0",
+    qrImage: QR_AFFIRM,
+    accent: ["#FFD79A", "#EFB77A", "#EFA0C0"],
+    surfaceBg: "#352428",
+    surfaceWashEnd: "rgba(239,176,122,0.34)",
   },
 ];
 
+const DREAM_PROMPTS = ["падение", "полет", "вода", "зубы", "..."];
+
+/** Высота поля сна на главной (меньше, чем на экране сонника); скролл внутри */
+const HOME_DREAM_INPUT_H = 116;
+
+/**
+ * Undrawn «Таро дня» — ореол за рубашкой карты + искры (только главная).
+ *
+ * | Параметр | Где править |
+ * |------------|-------------|
+ * | Разрешен вылет контента за скругление стекла | `allowOverflow={!hasDrawn}` у `<GlassCard>` «Таро дня» (только пока карта не вытянута). Реализация: `GlassCard.tsx` (`overflowBackdropClip` + blur). |
+ * | Рамка позиционирования ореола (до SVG) | `DAILY_TAROT_UNDRAWN_AURA.outer` ниже + `styles.cardBackAuraOuter` |
+ * | Холст SVG (граница «обрезки» растрового градиента) | `DAILY_TAROT_UNDRAWN_AURA.svg` |
+ * | Центр/радиус градиента (маска перьевая и цвет — общие) | `DAILY_TAROT_UNDRAWN_AURA.radial` в JSX у `RadialGradient` |
+ * | Прозрачность по краю (убрать прямоугольник) | `<Stop>` внутри `homeDailyCardAuraFeather` |
+ * | Цвет ореола | `<Stop>` внутри `homeDailyCardAura` |
+ * | Пульс яркости/масштаба ореола | `cardBackAuraStyle` + `drawCtaGlow` в `HomeScreen` |
+ * | Искры вокруг карты | `SparkleField` count/size + `styles.cardBackSparkleField` / `cardBackSparkleFieldInner` |
+ * | Слот карты | `styles.bigCardArt`, `styles.cardPlaceholder` |
+ * | Обрезка при скролле | `ScrollView` на этой странице: `removeClippedSubviews={false}` |
+ */
+const DAILY_TAROT_UNDRAWN_AURA = {
+  svg: { w: 280, h: 400 },
+  outer: { w: 280, h: 380, left: -81, top: -70 },
+  rotateDeg: "-6deg" as const,
+  radial: {
+    cx: "70%",
+    cy: "48%",
+    r: "78%",
+    fx: "44%",
+    fy: "35%",
+  },
+} as const;
+
 export default function HomeScreen() {
+  const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { streak } = useHistory();
-  const { card: dailyCard, hasDrawn, loading: dailyCardLoading } = useDailyCard();
+  const [currentDayKey, setCurrentDayKey] = useState(() => todayKey());
+  const [dreamText, setDreamText] = useState("");
+  const [dreamHintVisible, setDreamHintVisible] = useState(false);
+  const {
+    card: dailyCard,
+    hasDrawn,
+    loading: dailyCardLoading,
+    refresh: refreshDailyCard,
+  } = useDailyCard();
 
-  const dailyPhrase = useMemo(() => pickByDay(DAILY_PHRASES), []);
-  const energy = useMemo(() => pickByDay(ENERGY_THEMES), []);
+  const drawCtaGlow = useSharedValue(0);
+
+  useEffect(() => {
+    if (hasDrawn || dailyCardLoading) {
+      cancelAnimation(drawCtaGlow);
+      drawCtaGlow.value = 0;
+      return;
+    }
+    drawCtaGlow.value = withRepeat(
+      withTiming(1, {
+        duration: 1500,
+        easing: Easing.inOut(Easing.sin),
+      }),
+      -1,
+      true,
+    );
+    // drawCtaGlow is a stable ref from useSharedValue; listed for exhaustive-deps.
+  }, [hasDrawn, dailyCardLoading, drawCtaGlow]);
+
+  const drawCtaHaloStyle = useAnimatedStyle(() => {
+    const t = drawCtaGlow.value;
+    return {
+      opacity: 0.24 + t * 0.5,
+      transform: [{ scale: 0.96 + t * 0.12 }],
+    };
+  });
+
+  const drawCtaButtonStyle = useAnimatedStyle(() => {
+    const t = drawCtaGlow.value;
+    return {
+      transform: [{ scale: 0.994 + t * 0.022 }],
+      shadowOpacity: 0.42 + t * 0.34,
+      shadowRadius: 12 + t * 14,
+    };
+  });
+
+  const cardBackAuraStyle = useAnimatedStyle(() => {
+    const t = drawCtaGlow.value;
+    return {
+      opacity: 0.52 + t * 0.38,
+      transform: [{ scale: 0.9 + t * 0.14 }],
+    };
+  });
+
+  const handleQuickRitualPress = useCallback(
+    (key: string) => {
+      if (key === "oracle") router.push("/(tabs)/gadania?tab=oracle");
+      if (key === "daily-spread") router.push("/(tabs)/gadania?tab=tarot");
+      if (key === "dream") router.push("/(tabs)/dreambook");
+    },
+    [router],
+  );
+
+  /** Ширина как у прежней крупной карточки в бенто (доля 1.08 от пары 1.08+1). */
+  const ritualCardWidth = useMemo(() => {
+    const inner = windowWidth - 40;
+    const gap = 12;
+    const w = Math.round((inner - gap) * (1.08 / 2.08));
+    return Math.min(320, Math.max(220, w));
+  }, [windowWidth]);
+
+  const renderRitualTile = (r: Ritual, entranceIndex: number) => {
+    return (
+      <Pressable
+        key={r.key}
+        onPress={() => handleQuickRitualPress(r.key)}
+        style={[
+          styles.ritualPressable,
+          styles.ritualTileFeatured,
+          { width: ritualCardWidth },
+        ]}
+      >
+        <Animated.View
+          entering={FadeInDown.delay(entranceIndex * 70).duration(520)}
+          style={styles.ritualAppearWrap}
+        >
+          <LinearGradient
+            colors={[
+              "rgba(255,247,234,0.32)",
+              r.accent[0],
+              "rgba(157,124,230,0.22)",
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.ritualGradientBorder, styles.ritualGradientBorderFeatured]}
+          >
+            <View
+              style={[
+                styles.ritualFace,
+                styles.ritualFaceFeatured,
+                { backgroundColor: r.surfaceBg },
+              ]}
+            >
+              <LinearGradient
+                pointerEvents="none"
+                colors={[r.surfaceBg, r.surfaceWashEnd]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <Image
+                source={r.qrImage}
+                style={styles.ritualBgImage}
+                contentFit="cover"
+                contentPosition="center"
+                transition={200}
+                pointerEvents="none"
+              />
+
+              <LinearGradient
+                pointerEvents="none"
+                colors={[
+                  "rgba(255,247,234,0.08)",
+                  "rgba(18,14,32,0.35)",
+                  "rgba(8,6,18,0.88)",
+                  "rgba(6,4,14,0.96)",
+                ]}
+                locations={[0, 0.28, 0.72, 1]}
+                style={StyleSheet.absoluteFill}
+              />
+
+              <View style={styles.ritualSoftHighlight} />
+
+              <View style={[styles.ritualInner, styles.ritualInnerFeatured]}>
+                <View style={styles.ritualCopyBackdrop}>
+                  <Text style={styles.ritualTitle} numberOfLines={2}>
+                    {r.title}
+                  </Text>
+                  <Text style={styles.ritualSub} numberOfLines={2}>
+                    {r.subtitle}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
+        </Animated.View>
+      </Pressable>
+    );
+  };
+
+  const syncLocalDay = useCallback(() => {
+    setCurrentDayKey(todayKey());
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      syncLocalDay();
+      void refreshDailyCard();
+    }, [refreshDailyCard, syncLocalDay]),
+  );
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") syncLocalDay();
+    });
+    return () => sub.remove();
+  }, [syncLocalDay]);
+
+  useEffect(() => {
+    const id = setInterval(syncLocalDay, 30_000);
+    return () => clearInterval(id);
+  }, [syncLocalDay]);
+
+  const dailyPhrase = useMemo(
+    () => pickByDay(DAILY_PHRASES, currentDayKey),
+    [currentDayKey],
+  );
+  const energy = useMemo(
+    () => pickByDay(ENERGY_THEMES, currentDayKey),
+    [currentDayKey],
+  );
   const greeting = useMemo(() => greetingForHour(new Date().getHours()), []);
-  const userName = "Путник";
+  const userName = "Диана";
 
   // Get the reading data for the drawn card (if any)
   const dailyReading = useMemo(() => {
@@ -142,20 +506,44 @@ export default function HomeScreen() {
     router.push("/draw-card");
   };
 
+  const handleDreamPrompt = useCallback((prompt: string) => {
+    if (prompt === "...") return;
+    setDreamHintVisible(false);
+    setDreamText((prev) => {
+      const trimmed = prev.trim();
+      if (!trimmed) return prompt;
+      return trimmed.toLowerCase().includes(prompt) ? prev : `${prev.trim()} ${prompt}`;
+    });
+  }, []);
+
+  const handleDreamInterpret = useCallback(() => {
+    if (!dreamText.trim()) return;
+    setDreamHintVisible(true);
+  }, [dreamText]);
+
   // Path / XP — derived from streak (placeholder formula)
   const xp = Math.min(600, 180 + streak * 20);
   const xpTotal = 600;
   const xpPct = Math.max(6, Math.round((xp / xpTotal) * 100));
 
+  const dreamReady = dreamText.trim().length > 0;
+
   return (
     <View style={styles.root}>
       <CosmicBackground />
       <SafeAreaView style={styles.safe} edges={[]}>
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-          testID="home-scroll"
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            removeClippedSubviews={false}
+            testID="home-scroll"
+          >
           {/* Hero with background illustration */}
           <View style={styles.heroContainer}>
             <Image
@@ -236,6 +624,10 @@ export default function HomeScreen() {
           <GlassCard
             glow="purple"
             borderColor={theme.colors.borderPurple}
+            intensity={14}
+            surfaceColor="rgba(98,82,142,0.22)"
+            overlayColor="rgba(116,95,168,0.18)"
+            allowOverflow={!hasDrawn}
             style={styles.bigCard}
           >
             {/* State: Not yet drawn today OR loading */}
@@ -253,44 +645,113 @@ export default function HomeScreen() {
                     Получи руководство{"\n"}и ясность на сегодня.
                   </Text>
 
-                  <Pressable
-                    onPress={handleGoToDraw}
-                    style={styles.ctaWrap}
-                    testID="home-draw-card-btn"
-                    disabled={dailyCardLoading}
-                  >
-                    <LinearGradient
-                      colors={["#EFA0C0", "#B98BE5", "#9D7CE6"]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.ctaGradient}
-                    >
-                      <Text style={styles.ctaText}>
-                        {dailyCardLoading ? "Загрузка…" : "Вытянуть"}
-                      </Text>
-                      <Sparkles color="#FFF7EA" size={14} strokeWidth={1.8} />
-                    </LinearGradient>
-                  </Pressable>
+                  <View style={[styles.ctaWrap, styles.drawCtaWrap]}>
+                    <SparkleField
+                      count={6}
+                      size={150}
+                      style={styles.drawCtaSparkleField}
+                    />
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[styles.drawCtaHalo, drawCtaHaloStyle]}
+                    />
+                    <Animated.View style={[styles.drawCtaAnimatedButton, drawCtaButtonStyle]}>
+                      <Pressable
+                        onPress={handleGoToDraw}
+                        style={({ pressed }) => [
+                          styles.ctaPressableFill,
+                          pressed && !dailyCardLoading && { opacity: 0.92 },
+                        ]}
+                        testID="home-draw-card-btn"
+                        disabled={dailyCardLoading}
+                      >
+                        <LinearGradient
+                          colors={theme.gradients.primaryCta}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.ctaGradient}
+                        >
+                          <Text style={styles.ctaText}>
+                            {dailyCardLoading ? "Загрузка…" : "Вытянуть"}
+                          </Text>
+                          <Sparkles color="#FFF7EA" size={14} strokeWidth={1.8} />
+                        </LinearGradient>
+                      </Pressable>
+                    </Animated.View>
+                  </View>
                 </View>
 
                 {/* Right-side card placeholder */}
                 <View style={styles.bigCardArt}>
+                  <View style={styles.cardBackAuraOuter} pointerEvents="none">
+                    <Animated.View style={[styles.cardBackAuraInner, cardBackAuraStyle]}>
+                      <Svg
+                        width={DAILY_TAROT_UNDRAWN_AURA.svg.w}
+                        height={DAILY_TAROT_UNDRAWN_AURA.svg.h}
+                        style={styles.cardBackAuraSvg}
+                      >
+                        <Defs>
+                          {/* Feather mask: luminance → alpha at edges (pairs with larger SVG canvas). */}
+                          <RadialGradient
+                            id="homeDailyCardAuraFeather"
+                            cx={DAILY_TAROT_UNDRAWN_AURA.radial.cx}
+                            cy={DAILY_TAROT_UNDRAWN_AURA.radial.cy}
+                            r={DAILY_TAROT_UNDRAWN_AURA.radial.r}
+                            fx={DAILY_TAROT_UNDRAWN_AURA.radial.fx}
+                            fy={DAILY_TAROT_UNDRAWN_AURA.radial.fy}
+                          >
+                            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={1} />
+                            <Stop offset="35%" stopColor="#FFFFFF" stopOpacity={0.68} />
+                            <Stop offset="58%" stopColor="#FFFFFF" stopOpacity={0.18} />
+                            <Stop offset="74%" stopColor="#FFFFFF" stopOpacity={0} />
+                            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+                          </RadialGradient>
+                          <Mask id="homeDailyCardAuraMask" maskType="luminance">
+                            <Rect width="100%" height="100%" fill="url(#homeDailyCardAuraFeather)" />
+                          </Mask>
+                          <RadialGradient
+                            id="homeDailyCardAura"
+                            cx={DAILY_TAROT_UNDRAWN_AURA.radial.cx}
+                            cy={DAILY_TAROT_UNDRAWN_AURA.radial.cy}
+                            r={DAILY_TAROT_UNDRAWN_AURA.radial.r}
+                            fx={DAILY_TAROT_UNDRAWN_AURA.radial.fx}
+                            fy={DAILY_TAROT_UNDRAWN_AURA.radial.fy}
+                          >
+                            <Stop offset="0%" stopColor="#FFF7EA" stopOpacity={0.58} />
+                            <Stop offset="20%" stopColor="#FFD79A" stopOpacity={0.42} />
+                            <Stop offset="40%" stopColor="#EFA0C0" stopOpacity={0.32} />
+                            <Stop offset="58%" stopColor="#9D7CE6" stopOpacity={0.2} />
+                            <Stop offset="76%" stopColor="#9D7CE6" stopOpacity={0.08} />
+                            <Stop offset="100%" stopColor="#9D7CE6" stopOpacity={0} />
+                          </RadialGradient>
+                        </Defs>
+                        <Rect
+                          width="100%"
+                          height="100%"
+                          fill="url(#homeDailyCardAura)"
+                          mask="url(#homeDailyCardAuraMask)"
+                        />
+                      </Svg>
+                    </Animated.View>
+                  </View>
+                  <SparkleField
+                    count={13}
+                    size={196}
+                    style={styles.cardBackSparkleField}
+                  />
+                  <SparkleField
+                    count={8}
+                    size={148}
+                    style={styles.cardBackSparkleFieldInner}
+                  />
                   <View style={styles.cardPlaceholder}>
-                    <LinearGradient
-                      colors={["#33285C", "#1B1830"]}
-                      style={StyleSheet.absoluteFill}
+                    <Image
+                      source={TAROT_CARD_BACK}
+                      style={styles.cardPlaceholderImage}
+                      contentFit="cover"
+                      transition={150}
                     />
                     <View style={styles.cardPlaceholderBorder} />
-                    <Sun
-                      color={theme.colors.gold}
-                      size={28}
-                      strokeWidth={1.2}
-                    />
-                    <View style={styles.cardPlaceholderStars}>
-                      <View style={styles.tinyStar} />
-                      <View style={styles.tinyStar} />
-                      <View style={styles.tinyStar} />
-                    </View>
                   </View>
                 </View>
               </View>
@@ -303,7 +764,7 @@ export default function HomeScreen() {
                   <View style={styles.bigCardText}>
                     <View style={styles.eyebrowRow}>
                       <Sun color={theme.colors.gold} size={14} strokeWidth={1.6} />
-                      <Text style={styles.eyebrow}>ТВОЯ КАРТА</Text>
+                      <Text style={styles.eyebrow}>ТВОЯ КАРТА ДНЯ</Text>
                     </View>
                     <Text style={styles.cardRevealName} testID="card-of-the-day-name">
                       {dailyCard.nameRu}
@@ -324,7 +785,7 @@ export default function HomeScreen() {
                       testID="home-open-reading-btn"
                     >
                       <LinearGradient
-                        colors={["#EFA0C0", "#B98BE5", "#9D7CE6"]}
+                        colors={theme.gradients.primaryCta}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
                         style={styles.ctaGradient}
@@ -351,7 +812,7 @@ export default function HomeScreen() {
                 {/* Quote row below the card */}
                 {dailyReading && (
                   <View style={styles.cardQuoteRow}>
-                    <Text style={styles.cardQuoteMark}>"</Text>
+                    <Text style={styles.cardQuoteMark}>{"\""}</Text>
                     <Text style={styles.cardQuoteText}>
                       {dailyReading.quote}
                     </Text>
@@ -375,15 +836,10 @@ export default function HomeScreen() {
             />
             {/* Gradient overlay to blend with card and keep text readable */}
             <LinearGradient
-              colors={[
-                "rgba(35,31,58,0.95)",
-                "rgba(35,31,58,0.85)",
-                "rgba(35,31,58,0.4)",
-                "rgba(35,31,58,0.0)",
-              ]}
+              colors={energyCardGradient(energy.gradientRgb)}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              locations={[0, 0.35, 0.65, 1]}
+              locations={[0, 0.15, 0.4, 1]}
               style={StyleSheet.absoluteFill}
             />
             <View style={styles.energyInner}>
@@ -394,7 +850,7 @@ export default function HomeScreen() {
                 </View>
                 <Text style={styles.energyTitle}>{energy.title}</Text>
                 <View style={styles.quoteRow}>
-                  <Text style={styles.quoteMark}>"</Text>
+                  <Text style={styles.quoteMark}>{"\""}</Text>
                   <Text style={styles.quoteText} testID="energy-phrase">
                     {energy.quote || dailyPhrase}
                   </Text>
@@ -403,43 +859,128 @@ export default function HomeScreen() {
             </View>
           </GlassCard>
 
+          {/* Dream interpretation */}
+          <GlassCard
+            borderColor={theme.colors.borderPurple}
+            style={styles.dreamCard}
+          >
+            <Image
+              source={DREAM_BG}
+              style={styles.dreamBgImage}
+              contentFit="cover"
+              contentPosition="left center"
+            />
+            <LinearGradient
+              colors={[
+                "rgba(24,22,40,0.94)",
+                "rgba(24,22,40,0.72)",
+                "rgba(24,22,40,0.38)",
+                "rgba(24,22,40,0.2)",
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              locations={[0, 0.28, 0.58, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.dreamInner}>
+              <View style={styles.dreamCopy}>
+                <View style={styles.eyebrowRow}>
+                  <Moon color={theme.colors.gold} size={15} strokeWidth={1.7} />
+                  <Text style={styles.eyebrow}>ЧТО ВАМ СЕГОДНЯ СНИЛОСЬ?</Text>
+                </View>
+                <GlassCard
+                  glow="purple"
+                  borderColor={theme.colors.borderPurple}
+                  intensity={18}
+                  surfaceColor="rgba(98,82,142,0.22)"
+                  overlayColor="rgba(116,95,168,0.18)"
+                  style={styles.dreamInputCard}
+                >
+                  <TextInput
+                    value={dreamText}
+                    onChangeText={(text) => {
+                      setDreamText(text);
+                      setDreamHintVisible(false);
+                    }}
+                    placeholder="Мне приснилось..."
+                    placeholderTextColor={theme.colors.textDim}
+                    multiline
+                    scrollEnabled
+                    textAlignVertical="top"
+                    style={styles.dreamInput}
+                    testID="dream-input"
+                    underlineColorAndroid="transparent"
+                  />
+                </GlassCard>
+                <View style={styles.dreamPromptRow}>
+                  {DREAM_PROMPTS.map((prompt) => (
+                    <Pressable
+                      key={prompt}
+                      onPress={() => handleDreamPrompt(prompt)}
+                      style={styles.dreamPromptPill}
+                      hitSlop={6}
+                    >
+                      <Text style={styles.dreamPromptText}>{prompt}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {dreamHintVisible && (
+                  <Text style={styles.dreamComingSoon}>
+                    Толкование снов скоро появится здесь.
+                  </Text>
+                )}
+              </View>
+              <Pressable
+                onPress={handleDreamInterpret}
+                disabled={!dreamReady}
+                style={[
+                  styles.ctaWrap,
+                  styles.dreamCtaWrap,
+                  !dreamReady && styles.dreamCtaInactive,
+                ]}
+                testID="dream-interpret-btn"
+              >
+                <LinearGradient
+                  colors={
+                    dreamReady
+                      ? theme.gradients.primaryCta
+                      : theme.gradients.primaryCtaMuted
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.ctaGradient, styles.dreamCtaWide]}
+                >
+                  <Text
+                    style={[
+                      styles.ctaText,
+                      !dreamReady && styles.dreamCtaTextInactive,
+                    ]}
+                  >
+                    Узнать значение
+                  </Text>
+                  <Sparkles
+                    color={dreamReady ? "#FFF7EA" : "#C9BED6"}
+                    size={14}
+                    strokeWidth={1.8}
+                  />
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </GlassCard>
+
           {/* Quick Rituals */}
           <View style={styles.sectionHead}>
-            <Text style={styles.sectionEyebrow}>БЫСТРЫЕ РИТУАЛЫ</Text>
-            <Pressable style={styles.seeAllBtn} hitSlop={8}>
-              <Text style={styles.seeAllText}>Все</Text>
-              <ChevronRight color={theme.colors.textDim} size={14} />
-            </Pressable>
+            <Text style={styles.sectionEyebrow}>РИТУАЛЫ НА СЕГОДНЯ</Text>
+          
           </View>
 
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.ritualsRow}
+            style={styles.ritualsRowScroll}
+            contentContainerStyle={styles.ritualsRowContent}
           >
-            {QUICK_RITUALS.map((r) => (
-              <GlassCard
-                key={r.key}
-                borderColor={theme.colors.border}
-                style={styles.ritualCard}
-              >
-                <View style={styles.ritualInner}>
-                  <View style={styles.ritualArt}>
-                    <LinearGradient
-                      colors={r.gradient}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <r.Icon color={r.tint} size={30} strokeWidth={1.4} />
-                  </View>
-                  <Text style={styles.ritualTitle} numberOfLines={2}>
-                    {r.title}
-                  </Text>
-                  <Text style={styles.ritualSub} numberOfLines={1}>
-                    {r.subtitle}
-                  </Text>
-                </View>
-              </GlassCard>
-            ))}
+            {QUICK_RITUALS.map((r, i) => renderRitualTile(r, i))}
           </ScrollView>
 
           {/* Streak + Path */}
@@ -499,6 +1040,7 @@ export default function HomeScreen() {
           <View style={{ height: 140 }} />
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );
@@ -573,12 +1115,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   greetingSub: {
-    color: theme.colors.textDim,
+    color: theme.colors.text,
     fontFamily: theme.fonts.body,
-    fontSize: 14,
+    fontSize: 13,
     lineHeight: 20,
     marginTop: 8,
-    maxWidth: 260,
+    maxWidth: 140,
   },
 
   /* Hero with background illustration */
@@ -643,10 +1185,47 @@ const styles = StyleSheet.create({
     marginTop: 18,
     borderRadius: 999,
     alignSelf: "flex-start",
-    shadowColor: theme.colors.pink,
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
+    ...theme.shadows.ctaPrimary,
+  },
+  drawCtaWrap: {
+    position: "relative",
+    overflow: "visible",
+    shadowColor: "#FFD6EE",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.58,
+    shadowRadius: 12,
+    elevation: 14,
+  },
+  drawCtaSparkleField: {
+    position: "absolute",
+    top: -50,
+    left: -20,
+    width: 150,
+    height: 150,
+    opacity: 0.88,
+  },
+  drawCtaAnimatedButton: {
+    borderRadius: 999,
+    shadowColor: "#FFD6EE",
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 14,
+  },
+  drawCtaHalo: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: 999,
+    backgroundColor: "transparent",
+    shadowColor: "#FFD6EE",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
+  },
+  ctaPressableFill: {
+    borderRadius: 999,
+    overflow: "hidden",
   },
   ctaGradient: {
     flexDirection: "row",
@@ -669,6 +1248,46 @@ const styles = StyleSheet.create({
     height: 180,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "visible",
+    zIndex: 0,
+  },
+  cardBackAuraOuter: {
+    position: "absolute",
+    width: DAILY_TAROT_UNDRAWN_AURA.outer.w,
+    height: DAILY_TAROT_UNDRAWN_AURA.outer.h,
+    left: DAILY_TAROT_UNDRAWN_AURA.outer.left,
+    top: DAILY_TAROT_UNDRAWN_AURA.outer.top,
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ rotate: DAILY_TAROT_UNDRAWN_AURA.rotateDeg }],
+    zIndex: 0,
+  },
+  cardBackAuraInner: {
+    width: DAILY_TAROT_UNDRAWN_AURA.outer.w,
+    height: DAILY_TAROT_UNDRAWN_AURA.outer.h,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardBackAuraSvg: {
+    opacity: 0.95,
+  },
+  cardBackSparkleField: {
+    position: "absolute",
+    top: -22,
+    left: -28,
+    width: 196,
+    height: 196,
+    opacity: 0.96,
+    zIndex: 1,
+  },
+  cardBackSparkleFieldInner: {
+    position: "absolute",
+    top: 14,
+    left: -12,
+    width: 148,
+    height: 148,
+    opacity: 0.78,
+    zIndex: 1,
   },
   cardPlaceholder: {
     width: 112,
@@ -680,6 +1299,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.borderGold,
     transform: [{ rotate: "-6deg" }],
+    zIndex: 2,
+  },
+  cardPlaceholderImage: {
+    ...StyleSheet.absoluteFillObject,
   },
   cardPlaceholderBorder: {
     ...StyleSheet.absoluteFillObject,
@@ -687,18 +1310,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,215,154,0.35)",
-  },
-  cardPlaceholderStars: {
-    flexDirection: "row",
-    gap: 6,
-    marginTop: 10,
-  },
-  tinyStar: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: theme.colors.gold,
-    opacity: 0.8,
   },
   cardRevealName: {
     color: theme.colors.gold,
@@ -743,7 +1354,7 @@ const styles = StyleSheet.create({
   },
   cardQuoteText: {
     flex: 1,
-    color: theme.colors.textDim,
+    color: theme.colors.text,
     fontFamily: theme.fonts.heading,
     fontSize: 13,
     lineHeight: 19,
@@ -792,11 +1403,104 @@ const styles = StyleSheet.create({
   },
   quoteText: {
     flex: 1,
-    color: theme.colors.textDim,
+    color: theme.colors.text,
     fontFamily: theme.fonts.heading,
     fontSize: 14,
     lineHeight: 20,
     fontStyle: "italic",
+  },
+
+  /* Dream card */
+  dreamCard: {
+    marginBottom: 22,
+    overflow: "hidden",
+  },
+  dreamBgImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.95,
+  },
+  dreamInner: {
+    minHeight: 256,
+    padding: 20,
+    width: "100%",
+  },
+  dreamCopy: {
+    width: "100%",
+    alignSelf: "stretch",
+  },
+  dreamSub: {
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.body,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: -2,
+    marginBottom: 12,
+  },
+  dreamInputCard: {
+    alignSelf: "stretch",
+    marginTop: 2,
+    borderRadius: 22,
+    maxHeight: HOME_DREAM_INPUT_H,
+    overflow: "hidden",
+  },
+  dreamInput: {
+    width: "100%",
+    alignSelf: "stretch",
+    height: HOME_DREAM_INPUT_H,
+    maxHeight: HOME_DREAM_INPUT_H,
+    backgroundColor: "transparent",
+    color: theme.colors.text,
+    fontFamily: theme.fonts.body,
+    fontSize: 14,
+    lineHeight: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  dreamPromptRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+  dreamPromptPill: {
+    minHeight: 32,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(246,240,255,0.14)",
+    backgroundColor: "rgba(246,240,255,0.06)",
+  },
+  dreamPromptText: {
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 12,
+  },
+  dreamComingSoon: {
+    color: theme.colors.gold,
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 10,
+  },
+  dreamCtaWrap: {
+    alignSelf: "center",
+    marginTop: 16,
+  },
+  /** Заблокировано: без общей opacity — только приглушённый градиент и типографика. */
+  dreamCtaInactive: {
+    shadowOpacity: 0.14,
+    shadowRadius: 11,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  dreamCtaWide: {
+    minWidth: 222,
+    justifyContent: "center",
+  },
+  dreamCtaTextInactive: {
+    color: "#D8CFDF",
   },
 
   /* Section head */
@@ -825,44 +1529,103 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
 
-  /* Rituals row */
-  ritualsRow: {
-    gap: 12,
-    paddingRight: 8,
-    paddingBottom: 6,
-    paddingLeft: 2,
+  ritualsRowScroll: {
+    marginBottom: 4,
   },
-  ritualCard: {
-    width: 150,
+  ritualsRowContent: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 10,
+    paddingRight: 8,
+  },
+  ritualPressable: {
+    borderRadius: 30,
+    shadowColor: "#05030D",
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.34,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  ritualTileFeatured: {
+    minHeight: 248,
+    height: 248,
+    alignSelf: "stretch",
+  },
+  ritualAppearWrap: {
+    flex: 1,
+  },
+  ritualGradientBorder: {
+    flex: 1,
+    borderRadius: 30,
+    padding: 1.2,
+  },
+  ritualGradientBorderFeatured: {
+    borderRadius: 34,
+  },
+  ritualFace: {
+    flex: 1,
+    borderRadius: 29,
+    overflow: "hidden",
+  },
+  ritualFaceFeatured: {
+    borderRadius: 33,
+  },
+  ritualBgImage: {
+    position: "absolute",
+    top: "-10%",
+    left: "-10%",
+    width: "120%",
+    height: "120%",
+    opacity: 0.92,
+  },
+  ritualSoftHighlight: {
+    position: "absolute",
+    top: 0,
+    left: 10,
+    right: 18,
+    height: 1,
+    backgroundColor: "rgba(255,247,234,0.34)",
   },
   ritualInner: {
+    flex: 1,
+    justifyContent: "flex-end",
+    zIndex: 2,
     padding: 14,
-    alignItems: "center",
+    paddingTop: 12,
   },
-  ritualArt: {
-    width: 86,
-    height: 86,
+  ritualInnerFeatured: {
+    paddingHorizontal: 13,
+    paddingBottom: 13,
+    paddingTop: 14,
+  },
+  ritualCopyBackdrop: {
+    alignSelf: "stretch",
     borderRadius: 18,
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 13,
+    backgroundColor: "rgba(6,4,14,0.62)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(255,247,234,0.18)",
   },
   ritualTitle: {
     color: theme.colors.text,
-    fontFamily: theme.fonts.heading,
-    fontSize: 16,
-    lineHeight: 19,
-    textAlign: "center",
+    fontFamily: theme.fonts.headingBold,
+    fontSize: 18,
+    lineHeight: 21,
+    letterSpacing: 0.1,
+    textShadowColor: "rgba(0,0,0,0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
   ritualSub: {
-    color: theme.colors.textDim,
+    color: "rgba(255,247,234,0.76)",
     fontFamily: theme.fonts.body,
-    fontSize: 11.5,
-    marginTop: 4,
-    textAlign: "center",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 7,
+    textShadowColor: "rgba(0,0,0,0.4)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
 
   /* Path card */

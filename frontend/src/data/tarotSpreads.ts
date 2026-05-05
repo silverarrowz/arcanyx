@@ -14,14 +14,14 @@ export type TarotSpread = {
 export const TAROT_SPREADS: TarotSpread[] = [
   {
     id: "one-card",
-    titleRu: "Одна карта",
+    titleRu: "Карта момента",
     subtitleRu: "Быстрый совет на ситуацию · 1 карта",
     drawCount: 1,
     positions: [{ id: "answer", labelRu: "Ответ" }],
   },
   {
     id: "three-time",
-    titleRu: "Три карты",
+    titleRu: "Твой путь",
     subtitleRu: "Прошлое · Настоящее · Будущее · 3 карты",
     drawCount: 3,
     positions: [
@@ -43,7 +43,7 @@ export const TAROT_SPREADS: TarotSpread[] = [
   },
   {
     id: "love-three",
-    titleRu: "Любовный расклад",
+    titleRu: "Расклад на отношения",
     subtitleRu: "Ты · Он/она · Потенциал · 3 карты",
     drawCount: 3,
     positions: [
@@ -52,6 +52,51 @@ export const TAROT_SPREADS: TarotSpread[] = [
       { id: "potential", labelRu: "Потенциал" },
     ],
   },
+  {
+    id: "thoughts",
+    titleRu: "Мысли человека",
+    subtitleRu: "Что он/она думает · чувствует · скрывает · 3 карты",
+    drawCount: 3,
+    positions: [
+      { id: "thoughts", labelRu: "Мысли" },
+      { id: "feelings", labelRu: "Чувства" },
+      { id: "hidden", labelRu: "Скрывает" },
+    ],
+  },
+  {
+    id: "choice",
+    titleRu: "Выбор пути",
+    subtitleRu: "Путь A · Путь B · совет · 3 карты",
+    drawCount: 3,
+    positions: [
+      { id: "path-a", labelRu: "Путь A" },
+      { id: "path-b", labelRu: "Путь B" },
+      { id: "advice", labelRu: "Совет" },
+    ],
+  },
+  {
+    id: "career-growth",
+    titleRu: "Рост в карьере",
+    subtitleRu: "Где ты сейчас · куда можешь вырасти · что нужно сделать · 3 карты",
+    drawCount: 3,
+    positions: [
+      { id: "where-now", labelRu: "Где ты сейчас" },
+      { id: "grow-to", labelRu: "Куда можешь вырасти" },
+      { id: "what-to-do", labelRu: "Что нужно сделать" },
+    ],
+  },
+  {
+    id: "where-money",
+    titleRu: "На деньги",
+    subtitleRu: "Скрытая возможность · что упускаешь · как получить · 3 карты",
+    drawCount: 3,
+    positions: [
+      { id: "hidden-opportunity", labelRu: "Скрытая возможность" },
+      { id: "what-miss", labelRu: "Что упускаешь" },
+      { id: "how-get", labelRu: "Как получить" },
+    ],
+  },
+
 ];
 
 export const DEFAULT_SPREAD_ID: TarotSpread["id"] = "one-card";

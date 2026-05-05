@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from "react";
 import { StyleSheet, View, ViewStyle } from "react-native";
+import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -74,6 +75,8 @@ export default function Sparkles({
 
 function Spark({ spec, reduceMotion }: { spec: Spec; reduceMotion: boolean }) {
   const progress = useSharedValue(reduceMotion ? 0.6 : 0);
+  const haloSize = spec.size * 3.4;
+  const gradientId = `sparkGlow_${Math.round(spec.cx)}_${Math.round(spec.cy)}_${spec.delay}`;
 
   useEffect(() => {
     if (reduceMotion) return;
@@ -98,8 +101,8 @@ function Spark({ spec, reduceMotion }: { spec: Spec; reduceMotion: boolean }) {
   }, [progress, reduceMotion, spec.delay, spec.duration]);
 
   const aStyle = useAnimatedStyle(() => ({
-    opacity: 0.2 + progress.value * 0.8,
-    transform: [{ scale: 0.6 + progress.value * 0.6 }],
+    opacity: 0.18 + progress.value * 0.62,
+    transform: [{ scale: 0.72 + progress.value * 0.5 }],
   }));
 
   return (
@@ -107,25 +110,38 @@ function Spark({ spec, reduceMotion }: { spec: Spec; reduceMotion: boolean }) {
       style={[
         styles.dot,
         {
-          left: spec.cx - spec.size / 2,
-          top: spec.cy - spec.size / 2,
-          width: spec.size,
-          height: spec.size,
-          borderRadius: spec.size / 2,
-          backgroundColor: spec.color,
+          left: spec.cx - haloSize / 2,
+          top: spec.cy - haloSize / 2,
+          width: haloSize,
+          height: haloSize,
+          borderRadius: haloSize / 2,
           shadowColor: spec.color,
         },
         aStyle,
       ]}
-    />
+    >
+      <Svg width={haloSize} height={haloSize}>
+        <Defs>
+          <RadialGradient id={gradientId} cx="50%" cy="50%" r="50%">
+            <Stop offset="0%" stopColor={spec.color} stopOpacity={0.9} />
+            <Stop offset="24%" stopColor={spec.color} stopOpacity={0.55} />
+            <Stop offset="56%" stopColor={spec.color} stopOpacity={0.2} />
+            <Stop offset="100%" stopColor={spec.color} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill={`url(#${gradientId})`} />
+      </Svg>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   dot: {
     position: "absolute",
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.62,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 0 },
   },
 });
