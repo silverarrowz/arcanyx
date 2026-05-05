@@ -3,13 +3,24 @@ import { TarotCard } from "./tarotCards";
 /**
  * Lightweight per-card "reading" metadata used by the daily-card ritual.
  * Kept in a separate file so tarotCards.ts (the deck source of truth) stays clean,
- * and the helper falls back gracefully for minor arcana via suit defaults.
+ * and still falls back gracefully if some minor arcana reading is missing.
  */
 export type TarotReading = {
   energy: string;        // short keyword phrase, e.g. "Опора и рост"
   advice: string;        // one-line advice
   reflection: string;    // reflective question
   quote: string;         // short poetic quote
+};
+
+export type MinorSuit = "wands" | "cups" | "swords" | "pentacles";
+
+export type SuitTheme = {
+  suit: MinorSuit;
+  element: "fire" | "water" | "air" | "earth";
+  title: string;
+  tint: string;
+  border: string;
+  glow: string;
 };
 
 const SUIT_DEFAULTS: Record<string, TarotReading> = {
@@ -27,7 +38,7 @@ const SUIT_DEFAULTS: Record<string, TarotReading> = {
   },
   swords: {
     energy: "Ясность мысли",
-    advice: "Назови правду честно — себе в первую очередь.",
+    advice: "Будь честен — в первую очередь с собой.",
     reflection: "Какую правду ты сейчас избегаешь?",
     quote: "Истина — это лучший меч.",
   },
@@ -36,6 +47,354 @@ const SUIT_DEFAULTS: Record<string, TarotReading> = {
     advice: "Делай маленькие, но настоящие шаги.",
     reflection: "О чём сегодня нужна твоя забота?",
     quote: "Береги то, что хочешь вырастить.",
+  },
+};
+
+export const WANDS_CARDS: Record<string, TarotReading> = {
+  "ace": {
+    energy: "Искра начала",
+    advice: "Не сомневайся — просто начни.",
+    reflection: "Где внутри тебя зажигается огонь?",
+    quote: "Каждый огонь начинается с искры.",
+  },
+  "two": {
+    energy: "Выбор пути",
+    advice: "Смотри шире — ты готова к большему.",
+    reflection: "Чего ты хочешь на самом деле?",
+    quote: "Мир раскрывается перед теми, кто решается.",
+  },
+  "three": {
+    energy: "Расширение",
+    advice: "Доверяй процессу — ты уже в движении.",
+    reflection: "Где ты уже сделал шаг вперёд?",
+    quote: "То, что ты начал, уже растёт.",
+  },
+  "four": {
+    energy: "Стабильность и радость",
+    advice: "Остановись и отпразднуй момент.",
+    reflection: "Что сейчас приносит тебе радость?",
+    quote: "Иногда сила — в умении остановиться.",
+  },
+  "five": {
+    energy: "Напряжение и столкновение",
+    advice: "Не бойся конкуренции — в ней рост.",
+    reflection: "Где ты сопротивляешься другим?",
+    quote: "Искры рождаются в столкновении.",
+  },
+  "six": {
+    energy: "Победа",
+    advice: "Прими признание — ты это заслужила.",
+    reflection: "Позволяешь ли ты себе гордиться собой?",
+    quote: "Ты уже прошла больше, чем думаешь.",
+  },
+  "seven": {
+    energy: "Отстаивание",
+    advice: "Стой за себя — твоя позиция важна.",
+    reflection: "Где тебе нужно проявить твёрдость?",
+    quote: "Настоящая сила — в стойкости.",
+  },
+  "eight": {
+    energy: "Быстрое движение",
+    advice: "Действуй сейчас — время пришло.",
+    reflection: "Где ты тормозишь поток?",
+    quote: "Когда поток открыт — не сопротивляйся.",
+  },
+  "nine": {
+    energy: "Выносливость",
+    advice: "Ты почти у цели — не сдавайся.",
+    reflection: "Что даёт тебе силы продолжать?",
+    quote: "Последний шаг — самый важный.",
+  },
+  "ten": {
+    energy: "Перегрузка",
+    advice: "Отпусти лишнее — ты несёшь слишком много.",
+    reflection: "Что ты тащишь не своё?",
+    quote: "Сила — это умение отпускать.",
+  },
+  "page": {
+    energy: "Любопытство и импульс",
+    advice: "Позволь себе быть новичком.",
+    reflection: "Что тебя сейчас вдохновляет?",
+    quote: "Интерес — это начало пути.",
+  },
+  "knight": {
+    energy: "Импульс и движение",
+    advice: "Действуй смело, но не сжигай всё вокруг.",
+    reflection: "Куда ты спешишь — и зачем?",
+    quote: "Огонь ведёт, если им управлять.",
+  },
+  "queen": {
+    energy: "Внутренний огонь",
+    advice: "Доверься своей силе и харизме.",
+    reflection: "Где ты можешь сиять ярче?",
+    quote: "Ты — источник своего огня.",
+  },
+  "king": {
+    energy: "Контроль и мастерство",
+    advice: "Направь энергию — ты управляешь процессом.",
+    reflection: "Как ты используешь свою силу?",
+    quote: "Истинная власть — это управление собой.",
+  },
+};
+
+export const CUPS_CARDS: Record<string, TarotReading> = {
+  ace: {
+    energy: "Открытое сердце",
+    advice: "Позволь чувствам проявиться мягко и честно.",
+    reflection: "Что сегодня просит твоей нежности?",
+    quote: "Сердце раскрывается там, где ему безопасно.",
+  },
+  two: {
+    energy: "Созвучие",
+    advice: "Ищи не идеальность, а взаимность.",
+    reflection: "Где тебе важно быть услышанной?",
+    quote: "Настоящая близость начинается с честности.",
+  },
+  three: {
+    energy: "Радость общения",
+    advice: "Раздели хорошее с теми, кто тебе близок.",
+    reflection: "Кто сегодня наполняет тебя светом?",
+    quote: "Радость становится сильнее, когда ею делятся.",
+  },
+  four: {
+    energy: "Эмоциональная пауза",
+    advice: "Не отвергай новое только потому, что устала.",
+    reflection: "Что ты не замечаешь из-за внутренней закрытости?",
+    quote: "Иногда ответ приходит тихо.",
+  },
+  five: {
+    energy: "Печаль и отпускание",
+    advice: "Признай потерю, но не забывай о том, что осталось.",
+    reflection: "За что ты всё ещё держишься сердцем?",
+    quote: "Даже после дождя вода помнит свет.",
+  },
+  six: {
+    energy: "Тепло воспоминаний",
+    advice: "Позволь прошлому согреть тебя, но не увести назад.",
+    reflection: "Что из прошлого сегодня даёт тебе силу?",
+    quote: "Память может быть домом, но не клеткой.",
+  },
+  seven: {
+    energy: "Мир возможностей",
+    advice: "Выбирай не мечту, а то, что действительно твоё.",
+    reflection: "Где фантазия мешает тебе увидеть правду?",
+    quote: "Не всё сияющее ведёт к свету.",
+  },
+  eight: {
+    energy: "Уход от старого",
+    advice: "Если сердце уже ушло — не заставляй себя оставаться.",
+    reflection: "Что ты переросла эмоционально?",
+    quote: "Иногда путь к себе начинается с ухода.",
+  },
+  nine: {
+    energy: "Исполнение желания",
+    advice: "Позволь себе принять хорошее без чувства вины.",
+    reflection: "Что для тебя сейчас настоящее удовольствие?",
+    quote: "Желание тоже может быть мудрым.",
+  },
+  ten: {
+    energy: "Гармония сердца",
+    advice: "Заметь, где в твоей жизни уже есть любовь.",
+    reflection: "Что делает тебя по-настоящему счастливой?",
+    quote: "Счастье часто ближе, чем кажется.",
+  },
+  page: {
+    energy: "Нежное послание",
+    advice: "Будь открыта маленьким знакам и тёплым словам.",
+    reflection: "Какое чувство сегодня хочет быть замеченным?",
+    quote: "Самые тихие чувства часто самые важные.",
+  },
+  knight: {
+    energy: "Романтика и движение",
+    advice: "Следуй за вдохновением, но не теряй себя в мечте.",
+    reflection: "Куда тебя зовёт сердце?",
+    quote: "Красота пути — в искренности шага.",
+  },
+  queen: {
+    energy: "Глубина чувств",
+    advice: "Доверяй своей интуиции — она видит тоньше.",
+    reflection: "Что ты уже знаешь без слов?",
+    quote: "Твоя мягкость — это сила.",
+  },
+  king: {
+    energy: "Эмоциональная зрелость",
+    advice: "Сохраняй спокойствие, даже если внутри волны.",
+    reflection: "Как ты можешь поддержать себя сегодня?",
+    quote: "Глубокая вода не всегда шумит.",
+  },
+};
+
+export const SWORDS_CARDS: Record<string, TarotReading> = {
+  ace: {
+    energy: "Чистая ясность",
+    advice: "Назови вещи своими именами.",
+    reflection: "Какая мысль сегодня требует честности?",
+    quote: "Ясность приходит, когда исчезает страх правды.",
+  },
+  two: {
+    energy: "Внутренний выбор",
+    advice: "Не откладывай решение только потому, что оно сложное.",
+    reflection: "Что ты не хочешь видеть?",
+    quote: "Закрытые глаза не отменяют дороги.",
+  },
+  three: {
+    energy: "Боль и осознание",
+    advice: "Позволь себе почувствовать, но не застревай в ране.",
+    reflection: "Что тебе пора признать, чтобы исцелиться?",
+    quote: "Правда может ранить, но она же освобождает.",
+  },
+  four: {
+    energy: "Пауза для ума",
+    advice: "Отдохни, прежде чем снова всё анализировать.",
+    reflection: "Где тебе нужен покой?",
+    quote: "Тишина лечит мысли.",
+  },
+  five: {
+    energy: "Конфликт и цена победы",
+    advice: "Выбирай мир, если победа забирает слишком много.",
+    reflection: "Что ты пытаешься доказать?",
+    quote: "Не каждая победа приносит облегчение.",
+  },
+  six: {
+    energy: "Переход",
+    advice: "Двигайся дальше — даже маленькими шагами.",
+    reflection: "От чего ты постепенно уходишь?",
+    quote: "Новый берег начинается с решения плыть.",
+  },
+  seven: {
+    energy: "Скрытая стратегия",
+    advice: "Будь внимательна к деталям и чужим мотивам.",
+    reflection: "Где тебе нужна осторожность?",
+    quote: "Мудрость — это видеть больше, чем сказано.",
+  },
+  eight: {
+    energy: "Ограничивающие мысли",
+    advice: "Проверь, действительно ли ты в ловушке.",
+    reflection: "Какая мысль держит тебя на месте?",
+    quote: "Не каждая клетка заперта снаружи.",
+  },
+  nine: {
+    energy: "Тревога",
+    advice: "Не верь всем мыслям, которые приходят ночью.",
+    reflection: "Что ты преувеличиваешь из страха?",
+    quote: "Утро мягче, чем ночные мысли.",
+  },
+  ten: {
+    energy: "Завершение боли",
+    advice: "Признай конец — дальше будет легче.",
+    reflection: "Что уже нельзя вернуть, но можно отпустить?",
+    quote: "После самой тёмной точки начинается рассвет.",
+  },
+  page: {
+    energy: "Острый ум",
+    advice: "Наблюдай, учись и не спеши с выводами.",
+    reflection: "Какую информацию тебе стоит проверить?",
+    quote: "Любопытство открывает двери ясности.",
+  },
+  knight: {
+    energy: "Резкое движение",
+    advice: "Говори смело, но не руби с плеча.",
+    reflection: "Где ты торопишься с реакцией?",
+    quote: "Скорость сильна, когда ею управляет смысл.",
+  },
+  queen: {
+    energy: "Честность и границы",
+    advice: "Будь прямой, но не холодной.",
+    reflection: "Где тебе нужно сказать правду?",
+    quote: "Ясные границы защищают мягкое сердце.",
+  },
+  king: {
+    energy: "Разум и решение",
+    advice: "Действуй спокойно, логично и справедливо.",
+    reflection: "Какое решение требует зрелости?",
+    quote: "Сильный ум не шумит — он видит.",
+  },
+};
+
+export const PENTACLES_CARDS: Record<string, TarotReading> = {
+  ace: {
+    energy: "Новая опора",
+    advice: "Заметь шанс, который может вырасти во что-то большее.",
+    reflection: "Что сегодня можно начать бережно и реально?",
+    quote: "Большое начинается с одного настоящего шага.",
+  },
+  two: {
+    energy: "Баланс",
+    advice: "Не пытайся удержать всё сразу идеально.",
+    reflection: "Где тебе нужно больше равновесия?",
+    quote: "Баланс — это движение, а не неподвижность.",
+  },
+  three: {
+    energy: "Мастерство и сотрудничество",
+    advice: "Делай свою часть хорошо и не бойся просить помощи.",
+    reflection: "Где твой труд уже становится видимым?",
+    quote: "То, что строится с вниманием, стоит долго.",
+  },
+  four: {
+    energy: "Контроль и безопасность",
+    advice: "Береги своё, но не закрывайся от жизни.",
+    reflection: "За что ты держишься слишком крепко?",
+    quote: "Опора не должна становиться клеткой.",
+  },
+  five: {
+    energy: "Нехватка и уязвимость",
+    advice: "Не оставайся одна там, где можно принять поддержку.",
+    reflection: "Где ты чувствуешь себя без ресурса?",
+    quote: "Даже в холоде рядом может быть свет.",
+  },
+  six: {
+    energy: "Обмен и щедрость",
+    advice: "Давай и принимай без внутреннего долга.",
+    reflection: "Где важно восстановить баланс обмена?",
+    quote: "Щедрость сильна, когда она честна.",
+  },
+  seven: {
+    energy: "Терпение и рост",
+    advice: "Не торопи результат — он уже формируется.",
+    reflection: "Во что ты вкладываешься на будущее?",
+    quote: "Рост не всегда виден сразу.",
+  },
+  eight: {
+    energy: "Практика и навык",
+    advice: "Сегодня сила в повторении и внимании к деталям.",
+    reflection: "Какой навык ты сейчас оттачиваешь?",
+    quote: "Мастерство рождается из тихой дисциплины.",
+  },
+  nine: {
+    energy: "Самодостаточность",
+    advice: "Признай ценность того, что ты создала сама.",
+    reflection: "Где ты можешь опереться на себя?",
+    quote: "Твоя устойчивость — уже роскошь.",
+  },
+  ten: {
+    energy: "Наследие и стабильность",
+    advice: "Думай не только о моменте, но и о будущем.",
+    reflection: "Что ты хочешь построить надолго?",
+    quote: "Настоящая ценность переживает день.",
+  },
+  page: {
+    energy: "Учёба и потенциал",
+    advice: "Подойди к делу как ученик — внимательно и спокойно.",
+    reflection: "Что ты готова изучать глубже?",
+    quote: "Потенциал растёт там, где есть терпение.",
+  },
+  knight: {
+    energy: "Надёжное движение",
+    advice: "Двигайся медленно, но не останавливайся.",
+    reflection: "Какой маленький шаг сегодня будет самым полезным?",
+    quote: "Постоянство сильнее рывка.",
+  },
+  queen: {
+    energy: "Забота и изобилие",
+    advice: "Создай вокруг себя больше тепла, тела и опоры.",
+    reflection: "Что сегодня нуждается в твоей заботе?",
+    quote: "То, что ты питаешь любовью, расцветает.",
+  },
+  king: {
+    energy: "Уверенность и ресурс",
+    advice: "Управляй своими ресурсами спокойно и мудро.",
+    reflection: "Где тебе пора занять более устойчивую позицию?",
+    quote: "Изобилие начинается с внутренней опоры.",
   },
 };
 
@@ -181,10 +540,66 @@ const DEFAULT_MAJOR: TarotReading = {
   quote: "Слушай тихий голос внутри.",
 };
 
+const SUIT_THEME_MAP: Record<MinorSuit, SuitTheme> = {
+  wands: {
+    suit: "wands",
+    element: "fire",
+    title: "Огонь",
+    tint: "rgba(255, 166, 94, 0.12)",
+    border: "rgba(255, 166, 94, 0.35)",
+    glow: "#FF9A4E",
+  },
+  cups: {
+    suit: "cups",
+    element: "water",
+    title: "Вода",
+    tint: "rgba(116, 190, 255, 0.12)",
+    border: "rgba(116, 190, 255, 0.35)",
+    glow: "#6FBCFF",
+  },
+  swords: {
+    suit: "swords",
+    element: "air",
+    title: "Воздух",
+    tint: "rgba(198, 210, 229, 0.12)",
+    border: "rgba(198, 210, 229, 0.35)",
+    glow: "#D5E2FF",
+  },
+  pentacles: {
+    suit: "pentacles",
+    element: "earth",
+    title: "Земля",
+    tint: "rgba(156, 213, 126, 0.12)",
+    border: "rgba(156, 213, 126, 0.35)",
+    glow: "#9EDB7B",
+  },
+};
+
+function parseMinorArcanaId(cardId: string): { value: string; suit: MinorSuit } | null {
+  const m = cardId.match(/^([a-z-]+)-of-(wands|cups|swords|pentacles)$/);
+  if (!m) return null;
+  return { value: m[1], suit: m[2] as MinorSuit };
+}
+
+function getMinorReading(value: string, suit: MinorSuit): TarotReading {
+  const bySuit: Record<MinorSuit, Record<string, TarotReading>> = {
+    wands: WANDS_CARDS,
+    cups: CUPS_CARDS,
+    swords: SWORDS_CARDS,
+    pentacles: PENTACLES_CARDS,
+  };
+  return bySuit[suit][value] ?? SUIT_DEFAULTS[suit];
+}
+
 export function getCardReading(card: TarotCard): TarotReading {
-  // Minor arcana: id pattern "<value>-of-<suit>"
-  const m = card.id.match(/-of-(wands|cups|swords|pentacles)$/);
-  if (m) return SUIT_DEFAULTS[m[1]];
+  const minor = parseMinorArcanaId(card.id);
+  if (minor) return getMinorReading(minor.value, minor.suit);
   // Major arcana — explicit override or generic fallback
   return MAJOR_OVERRIDES[card.id] ?? DEFAULT_MAJOR;
+}
+
+export function getCardSuitTheme(card: TarotCard): SuitTheme | null {
+  const minor = parseMinorArcanaId(card.id);
+  if (!minor) return null;
+  return SUIT_THEME_MAP[minor.suit];
 }

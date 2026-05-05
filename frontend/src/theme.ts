@@ -56,7 +56,9 @@ export const theme = {
   },
   fonts: {
     heading: "CormorantGaramond_600SemiBold",
+    headingItalic: "CormorantGaramond_600SemiBold_Italic",
     headingBold: "CormorantGaramond_700Bold",
+    headingBoldItalic: "CormorantGaramond_700Bold_Italic",
     body: "Manrope_400Regular",
     bodyMedium: "Manrope_500Medium",
     bodySemi: "Manrope_600SemiBold",

@@ -25,14 +25,22 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
-import Svg, { Defs, Mask, RadialGradient, Rect, Stop } from "react-native-svg";
+import Svg, {
+  Defs,
+  Mask,
+  RadialGradient,
+  Rect,
+  Stop,
+} from "react-native-svg";
 import {
   Bell,
   BookOpenCheck,
+  Circle,
   Compass,
   Flame,
   Menu,
   Moon,
+  Sparkle,
   Sparkles,
   Sun,
 } from "lucide-react-native";
@@ -44,16 +52,20 @@ import TarotCard from "../../src/components/TarotCard";
 import { DAILY_PHRASES } from "../../src/data/tarotCards";
 import { useHistory } from "../../src/context/HistoryContext";
 import { todayKey, useDailyCard } from "../../src/hooks/useDailyCard";
-import { getCardReading } from "../../src/data/tarotReadings";
+import { getCardReading, getCardSuitTheme } from "../../src/data/tarotReadings";
+import { getDailyQuote } from "../../src/data/dailyQuotes";
 
 const HERO_BG = require("../../assets/home/bg-main.png");
 const ENERGY_BG = require("../../assets/home/bg-energy.png");
 const DREAM_BG = require("../../assets/home/bg-dream.png");
-const TAROT_CARD_BACK = require("../../assets/tarot/card-back.png");
-const QR_ORACLE = require("../../assets/home/qr-ball.png");
-const QR_DREAMS = require("../../assets/home/qr-dream.png");
-const QR_AFFIRM = require("../../assets/home/qr-aff.png");
-const QR_TAROT = require("../../assets/home/qr-tarot.png");
+/** Фон секции «Цитата дня» — того же набора, что и hero/энергия/сонник */
+const QUOTE_SECTION_BG = require("../../assets/home/bgi5.png");
+const QUOTE_MARK_IMG = require("../../assets/home/quote3.png");
+const TAROT_CARD_BACK = require("../../assets/tarot/card-back2.png");
+const QR_ORACLE = require("../../assets/home/chrome-ball.png");
+const QR_DREAMS = require("../../assets/home/chrome-dreams3.png");
+const QR_AFFIRM = require("../../assets/home/chrome-aff.png");
+const QR_TAROT = require("../../assets/home/chrom-tarot3.png");
 
 function pickByDay<T>(arr: T[], dayKey: string): T {
   const [year, month, date] = dayKey.split("-").map(Number);
@@ -226,51 +238,155 @@ type Ritual = {
   title: string;
   subtitle: string;
   qrImage: ImageSourcePropType;
-  accent: [string, string, string];
-  /** Базовый цвет карточки (под иллюстрацией). */
-  surfaceBg: string;
-  /** Второй стоп градиента под фото — усиливает узнаваемость ритуала. */
-  surfaceWashEnd: string;
+  icon: "moon" | "orb" | "sparkle" | "sun";
 };
 
 const QUICK_RITUALS: Ritual[] = [
   {
     key: "daily-spread",
-    title: "Дневной расклад",
-    subtitle: "Расклад на сегодня",
+    title: "Таро",
+    subtitle: "Обрети ясность",
     qrImage: QR_TAROT,
-    accent: ["#FFD79A", "#EFA0C0", "#9D7CE6"],
-    surfaceBg: "#342038",
-    surfaceWashEnd: "rgba(239,160,192,0.38)",
+    icon: "moon",
   },
   {
     key: "oracle",
-    title: "Спроси Оракула",
-    subtitle: "Магический шар",
+    title: "Магический шар",
+    subtitle: "Задай вопрос",
     qrImage: QR_ORACLE,
-    accent: ["#F4A6CA", "#9D7CE6", "#FFD79A"],
-    surfaceBg: "#241a3e",
-    surfaceWashEnd: "rgba(239, 211, 96, 0.42)",
+    icon: "orb",
   },
   {
     key: "dream",
-    title: "Истолковать сон",
-    subtitle: "Найди ясность",
+    title: "Сны",
+    subtitle: "Раскрой смысл",
     qrImage: QR_DREAMS,
-    accent: ["#CFC6E8", "#7B4CC2", "#EFA0C0"],
-    surfaceBg: "#1c1a34",
-    surfaceWashEnd: "rgba(123,76,194,0.36)",
+    icon: "sparkle",
   },
   {
     key: "affirm",
-    title: "Аффирмация дня",
-    subtitle: "Подними энергию",
+    title: "Аффирмация",
+    subtitle: "Настройся на лучшее",
     qrImage: QR_AFFIRM,
-    accent: ["#FFD79A", "#EFB77A", "#EFA0C0"],
-    surfaceBg: "#352428",
-    surfaceWashEnd: "rgba(239,176,122,0.34)",
+    icon: "sun",
   },
 ];
+
+function QuickRitualIcon({
+  kind,
+  color,
+  size,
+}: {
+  kind: Ritual["icon"];
+  color: string;
+  size: number;
+}) {
+  const stroke = 1.45;
+  switch (kind) {
+    case "moon":
+      return <Moon color={color} size={size} strokeWidth={stroke} />;
+    case "orb":
+      return <Circle color={color} size={size} strokeWidth={stroke + 0.65} />;
+    case "sparkle":
+      return <Sparkle color={color} size={size} strokeWidth={stroke} />;
+    default:
+      return <Sun color={color} size={size} strokeWidth={stroke} />;
+  }
+}
+
+function QuickRitualTile({
+  ritual,
+  width,
+  entranceIndex,
+  onPress,
+}: {
+  ritual: Ritual;
+  width: number;
+  entranceIndex: number;
+  onPress: () => void;
+}) {
+  const pressProgress = useSharedValue(0);
+
+  const pressFeedbackStyle = useAnimatedStyle(() => {
+    const t = pressProgress.value;
+    return {
+      opacity: 1 - t * 0.08,
+      transform: [{ scale: 1 - t * 0.035 }],
+    };
+  });
+
+  const handlePressIn = useCallback(() => {
+    pressProgress.value = withTiming(1, {
+      duration: 130,
+      easing: Easing.out(Easing.quad),
+    });
+  }, [pressProgress]);
+
+  const handlePressOut = useCallback(() => {
+    pressProgress.value = withTiming(0, {
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [pressProgress]);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={[styles.ritualPressable, { width }]}
+    >
+      <Animated.View style={[styles.ritualPressAnim, pressFeedbackStyle]}>
+        <Animated.View
+          entering={FadeInDown.delay(entranceIndex * 70).duration(520)}
+          style={styles.ritualAppearWrap}
+        >
+          <View style={styles.ritualCardClip}>
+            <Image
+              source={ritual.qrImage}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              contentPosition="center"
+              transition={200}
+              pointerEvents="none"
+            />
+            <LinearGradient
+              pointerEvents="none"
+              colors={[
+                "rgba(0,0,0,0)",
+                "rgba(28,22,48,0.14)",
+                "rgba(18,12,34,0.48)",
+                "rgba(10,7,22,0.78)",
+                "rgba(6,4,14,0.94)",
+              ]}
+              locations={[0, 0.42, 0.62, 0.82, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <LinearGradient
+              pointerEvents="none"
+              colors={["transparent", "rgba(8,4,18,0.72)", "rgba(4,2,12,0.96)"]}
+              locations={[0, 0.55, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.ritualTextBandGradient}
+            />
+            <View style={styles.ritualCardFooter}>
+              <QuickRitualIcon kind={ritual.icon} color="#FFFFFF" size={21} />
+              <Text style={styles.ritualTitleImg} numberOfLines={2}>
+                {ritual.title}
+              </Text>
+              <Text style={styles.ritualSubImg} numberOfLines={2}>
+                {ritual.subtitle}
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 const DREAM_PROMPTS = ["падение", "полет", "вода", "зубы", "..."];
 
@@ -384,80 +500,13 @@ export default function HomeScreen() {
 
   const renderRitualTile = (r: Ritual, entranceIndex: number) => {
     return (
-      <Pressable
+      <QuickRitualTile
         key={r.key}
+        ritual={r}
+        width={ritualCardWidth}
+        entranceIndex={entranceIndex}
         onPress={() => handleQuickRitualPress(r.key)}
-        style={[
-          styles.ritualPressable,
-          styles.ritualTileFeatured,
-          { width: ritualCardWidth },
-        ]}
-      >
-        <Animated.View
-          entering={FadeInDown.delay(entranceIndex * 70).duration(520)}
-          style={styles.ritualAppearWrap}
-        >
-          <LinearGradient
-            colors={[
-              "rgba(255,247,234,0.32)",
-              r.accent[0],
-              "rgba(157,124,230,0.22)",
-            ]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.ritualGradientBorder, styles.ritualGradientBorderFeatured]}
-          >
-            <View
-              style={[
-                styles.ritualFace,
-                styles.ritualFaceFeatured,
-                { backgroundColor: r.surfaceBg },
-              ]}
-            >
-              <LinearGradient
-                pointerEvents="none"
-                colors={[r.surfaceBg, r.surfaceWashEnd]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <Image
-                source={r.qrImage}
-                style={styles.ritualBgImage}
-                contentFit="cover"
-                contentPosition="center"
-                transition={200}
-                pointerEvents="none"
-              />
-
-              <LinearGradient
-                pointerEvents="none"
-                colors={[
-                  "rgba(255,247,234,0.08)",
-                  "rgba(18,14,32,0.35)",
-                  "rgba(8,6,18,0.88)",
-                  "rgba(6,4,14,0.96)",
-                ]}
-                locations={[0, 0.28, 0.72, 1]}
-                style={StyleSheet.absoluteFill}
-              />
-
-              <View style={styles.ritualSoftHighlight} />
-
-              <View style={[styles.ritualInner, styles.ritualInnerFeatured]}>
-                <View style={styles.ritualCopyBackdrop}>
-                  <Text style={styles.ritualTitle} numberOfLines={2}>
-                    {r.title}
-                  </Text>
-                  <Text style={styles.ritualSub} numberOfLines={2}>
-                    {r.subtitle}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </LinearGradient>
-        </Animated.View>
-      </Pressable>
+      />
     );
   };
 
@@ -492,6 +541,7 @@ export default function HomeScreen() {
     () => pickByDay(ENERGY_THEMES, currentDayKey),
     [currentDayKey],
   );
+  const dailyQuote = useMemo(() => getDailyQuote(currentDayKey), [currentDayKey]);
   const greeting = useMemo(() => greetingForHour(new Date().getHours()), []);
   const userName = "Диана";
 
@@ -499,6 +549,10 @@ export default function HomeScreen() {
   const dailyReading = useMemo(() => {
     if (!dailyCard) return null;
     return getCardReading(dailyCard);
+  }, [dailyCard]);
+  const dailySuitTheme = useMemo(() => {
+    if (!dailyCard) return null;
+    return getCardSuitTheme(dailyCard);
   }, [dailyCard]);
 
   // Navigate to full draw ritual
@@ -623,10 +677,16 @@ export default function HomeScreen() {
           {/* Tarot of the Day */}
           <GlassCard
             glow="purple"
-            borderColor={theme.colors.borderPurple}
+            borderColor={hasDrawn && dailySuitTheme ? dailySuitTheme.border : theme.colors.borderPurple}
             intensity={14}
-            surfaceColor="rgba(98,82,142,0.22)"
-            overlayColor="rgba(116,95,168,0.18)"
+            surfaceColor={
+              hasDrawn && dailySuitTheme ? dailySuitTheme.tint : "rgba(98,82,142,0.22)"
+            }
+            overlayColor={
+              hasDrawn && dailySuitTheme
+                ? "rgba(25, 21, 40, 0.24)"
+                : "rgba(116,95,168,0.18)"
+            }
             allowOverflow={!hasDrawn}
             style={styles.bigCard}
           >
@@ -771,7 +831,15 @@ export default function HomeScreen() {
                     </Text>
                     
                     {dailyReading && (
-                      <View style={styles.energyPillSmall}>
+                      <View
+                        style={[
+                          styles.energyPillSmall,
+                          dailySuitTheme && {
+                            borderColor: dailySuitTheme.border,
+                            backgroundColor: dailySuitTheme.tint,
+                          },
+                        ]}
+                      >
                         <Sparkles color={theme.colors.gold} size={10} strokeWidth={1.8} />
                         <Text style={styles.energyPillText}>
                           {dailyReading.energy.toUpperCase()}
@@ -791,7 +859,7 @@ export default function HomeScreen() {
                         style={styles.ctaGradient}
                       >
                         <BookOpenCheck color="#FFF7EA" size={14} strokeWidth={1.8} />
-                        <Text style={styles.ctaText}>Открыть</Text>
+                        <Text style={styles.ctaText}>Подробнее</Text>
                       </LinearGradient>
                     </Pressable>
                   </View>
@@ -812,9 +880,10 @@ export default function HomeScreen() {
                 {/* Quote row below the card */}
                 {dailyReading && (
                   <View style={styles.cardQuoteRow}>
-                    <Text style={styles.cardQuoteMark}>{"\""}</Text>
                     <Text style={styles.cardQuoteText}>
+                      <Text style={styles.quoteSpan}>{"“\u00A0"}</Text>
                       {dailyReading.quote}
+                      <Text style={styles.quoteSpan}>{"\u00A0„"}</Text>
                     </Text>
                   </View>
                 )}
@@ -849,12 +918,11 @@ export default function HomeScreen() {
                   <Text style={styles.eyebrow}>ЭНЕРГИЯ ДНЯ</Text>
                 </View>
                 <Text style={styles.energyTitle}>{energy.title}</Text>
-                <View style={styles.quoteRow}>
-                  <Text style={styles.quoteMark}>{"\""}</Text>
-                  <Text style={styles.quoteText} testID="energy-phrase">
-                    {energy.quote || dailyPhrase}
-                  </Text>
-                </View>
+                <Text style={styles.quoteText} testID="energy-phrase">
+                  <Text style={styles.quoteSpan}>{"“\u00A0"}</Text>
+                  {energy.quote || dailyPhrase}
+                  <Text style={styles.quoteSpan}>{"\u00A0„"}</Text>
+                </Text>
               </View>
             </View>
           </GlassCard>
@@ -982,6 +1050,47 @@ export default function HomeScreen() {
           >
             {QUICK_RITUALS.map((r, i) => renderRitualTile(r, i))}
           </ScrollView>
+
+          <GlassCard borderColor={theme.colors.borderPurple} style={styles.dailyQuoteCard}>
+            <Image
+              source={QUOTE_SECTION_BG}
+              style={styles.dailyQuoteBgImage}
+              contentFit="cover"
+              contentPosition="center"
+            />
+            <LinearGradient
+              colors={[
+                "rgba(24,22,40,0.92)",
+                "rgba(24,22,40,0.78)",
+                "rgba(24,22,40,0.55)",
+                "rgba(18,16,34,0.35)",
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              locations={[0, 0.35, 0.65, 1]}
+              style={styles.dailyQuoteGradient}
+            />
+            <View style={styles.dailyQuoteInner}>
+              {/* <View style={styles.eyebrowRow}>
+                <Text style={styles.eyebrow}>ЦИТАТА ДНЯ</Text>
+              </View> */}
+              <View style={styles.dailyQuoteQuoteRow}>
+                <Image
+                  source={QUOTE_MARK_IMG}
+                  style={styles.dailyQuoteMarkImage}
+                  contentFit="contain"
+                />
+                <View style={styles.dailyQuoteBodyCol}>
+                  <Text style={styles.dailyQuoteText} testID="daily-quote">
+                    {dailyQuote.text}
+                  </Text>
+                  <Text style={styles.dailyQuoteAuthor} testID="daily-quote-author">
+                  — {dailyQuote.author}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </GlassCard>
 
           {/* Streak + Path */}
           <GlassCard
@@ -1330,7 +1439,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: theme.colors.borderGold,
-    backgroundColor: "rgba(255,215,154,0.08)",
   },
   energyPillText: {
     color: theme.colors.gold,
@@ -1339,26 +1447,18 @@ const styles = StyleSheet.create({
     letterSpacing: 1.6,
   },
   cardQuoteRow: {
-    flexDirection: "row",
-    gap: 6,
     paddingHorizontal: 22,
     paddingBottom: 20,
     marginTop: -4,
-  },
-  cardQuoteMark: {
-    color: theme.colors.gold,
-    fontFamily: theme.fonts.display,
-    fontSize: 22,
-    lineHeight: 18,
-    marginTop: 4,
   },
   cardQuoteText: {
     flex: 1,
     color: theme.colors.text,
     fontFamily: theme.fonts.heading,
-    fontSize: 13,
+    fontSize: 16,
     lineHeight: 19,
     fontStyle: "italic",
+    paddingTop: 4,
   },
 
   /* Energy card */
@@ -1390,24 +1490,20 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     marginBottom: 12,
   },
-  quoteRow: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  quoteMark: {
+  quoteSpan: {
     color: theme.colors.gold,
     fontFamily: theme.fonts.display,
     fontSize: 26,
     lineHeight: 22,
-    marginTop: 4,
   },
   quoteText: {
     flex: 1,
     color: theme.colors.text,
     fontFamily: theme.fonts.heading,
-    fontSize: 14,
-    lineHeight: 20,
-    fontStyle: "italic",
+    fontSize: 16,
+    lineHeight: 22,
+    maxWidth: 170,
+    paddingTop: 4,
   },
 
   /* Dream card */
@@ -1538,94 +1634,130 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingRight: 8,
   },
-  ritualPressable: {
-    borderRadius: 30,
-    shadowColor: "#05030D",
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.34,
-    shadowRadius: 24,
-    elevation: 12,
-  },
-  ritualTileFeatured: {
-    minHeight: 248,
-    height: 248,
-    alignSelf: "stretch",
-  },
-  ritualAppearWrap: {
-    flex: 1,
-  },
-  ritualGradientBorder: {
-    flex: 1,
-    borderRadius: 30,
-    padding: 1.2,
-  },
-  ritualGradientBorderFeatured: {
-    borderRadius: 34,
-  },
-  ritualFace: {
-    flex: 1,
-    borderRadius: 29,
+  dailyQuoteCard: {
+    marginTop: 16,
+    marginBottom: 22,
     overflow: "hidden",
+    minHeight: 132,
   },
-  ritualFaceFeatured: {
-    borderRadius: 33,
+  dailyQuoteBgImage: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+    opacity: 0.85,
   },
-  ritualBgImage: {
-    position: "absolute",
-    top: "-10%",
-    left: "-10%",
-    width: "120%",
-    height: "120%",
+  dailyQuoteGradient: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  dailyQuoteInner: {
+    position: "relative",
+    zIndex: 2,
+    paddingHorizontal: 22,
+    paddingVertical: 22,
+  },
+  dailyQuoteQuoteRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 4,
+  },
+  dailyQuoteBodyCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 10,
+  },
+  dailyQuoteMarkImage: {
+    width: 72,
+    aspectRatio: 1,
+    marginTop: 2,
     opacity: 0.92,
   },
-  ritualSoftHighlight: {
-    position: "absolute",
-    top: 0,
-    left: 10,
-    right: 18,
-    height: 1,
-    backgroundColor: "rgba(255,247,234,0.34)",
+  dailyQuoteMarkImageFlip: {
+    transform: [{ scaleX: -1 }],
   },
-  ritualInner: {
-    flex: 1,
-    justifyContent: "flex-end",
-    zIndex: 2,
-    padding: 14,
-    paddingTop: 12,
-  },
-  ritualInnerFeatured: {
-    paddingHorizontal: 13,
-    paddingBottom: 13,
-    paddingTop: 14,
-  },
-  ritualCopyBackdrop: {
-    alignSelf: "stretch",
-    borderRadius: 18,
-    paddingVertical: 11,
-    paddingHorizontal: 13,
-    backgroundColor: "rgba(6,4,14,0.62)",
-    borderWidth: 1,
-    borderColor: "rgba(255,247,234,0.18)",
-  },
-  ritualTitle: {
+  dailyQuoteText: {
     color: theme.colors.text,
-    fontFamily: theme.fonts.headingBold,
-    fontSize: 18,
-    lineHeight: 21,
-    letterSpacing: 0.1,
-    textShadowColor: "rgba(0,0,0,0.45)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
+    fontFamily: theme.fonts.heading,
+    fontSize: 22,
+    lineHeight: 26,
+    fontStyle: "italic",
+    paddingTop: 2,
   },
-  ritualSub: {
-    color: "rgba(255,247,234,0.76)",
-    fontFamily: theme.fonts.body,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 7,
-    textShadowColor: "rgba(0,0,0,0.4)",
+  dailyQuoteAuthor: {
+    width: "100%",
+    flexShrink: 1,
+    color: theme.colors.gold,
+    fontFamily: theme.fonts.headingItalic,
+    fontSize: 16,
+    lineHeight: 16,
+    letterSpacing: 0.3,
+    marginTop: 2,
+  },
+  ritualPressable: {
+    borderRadius: 26,
+    shadowColor: "#05030D",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.38,
+    shadowRadius: 22,
+    elevation: 11,
+  },
+  ritualPressAnim: {
+    borderRadius: 26,
+  },
+  ritualAppearWrap: {
+    borderRadius: 26,
+    overflow: "hidden",
+  },
+  ritualCardClip: {
+    aspectRatio: 4 / 5,
+    width: "100%",
+    borderRadius: 26,
+    overflow: "hidden",
+    backgroundColor: "#1a1428",
+  },
+  /** Дополнительное затемнение только в нижней зоне под текстом */
+  ritualTextBandGradient: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "46%",
+    zIndex: 1,
+  },
+  ritualCardFooter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 14,
+    paddingTop: 28,
+    paddingBottom: 18,
+    alignItems: "center",
+    zIndex: 2,
+    gap: 8,
+  },
+  ritualTitleImg: {
+    color: "#FFFFFF",
+    fontFamily: theme.fonts.heading,
+    fontSize: 21,
+    lineHeight: 24,
+    letterSpacing: 3.2,
+    textAlign: "center",
+    textTransform: "uppercase",
+    textShadowColor: "rgba(0,0,0,0.58)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+    textShadowRadius: 14,
+  },
+  ritualSubImg: {
+    color: "rgba(255,255,255,0.96)",
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: 0.25,
+    textAlign: "center",
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 10,
   },
 
   /* Path card */

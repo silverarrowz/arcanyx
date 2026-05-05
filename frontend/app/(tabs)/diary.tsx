@@ -212,7 +212,9 @@ export default function DiaryScreen() {
 
   const sorted = useMemo(
     () =>
-      [...items].sort(
+      [...items]
+        .filter((item) => item.type === "oracle" || item.type === "tarot")
+        .sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
       ),
     [items],

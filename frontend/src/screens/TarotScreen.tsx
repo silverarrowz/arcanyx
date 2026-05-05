@@ -253,6 +253,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
   const [deckViewportW, setDeckViewportW] = useState(width);
   const [deckContentWidth, setDeckContentWidth] = useState(0);
   const rootRef = useRef<View>(null);
+  const mainScrollRef = useRef<ScrollView>(null);
   const deckStripRef = useRef<ScrollView>(null);
   const deckCardRefs = useRef<Record<string, View | null>>({});
   const slotRefs = useRef<Record<number, View | null>>({});
@@ -750,6 +751,11 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
     }
   }, [flowPhase]);
 
+  useEffect(() => {
+    if (flowPhase === "select") return;
+    mainScrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [flowPhase]);
+
   const tryApplyDeckInitialCenter = useCallback(() => {
     if (!deckNeedsInitialCenterRef.current || flowPhase !== "picking") return;
     const vw = deckViewportW > 0 ? deckViewportW : width;
@@ -836,6 +842,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
             </View>
           ) : null}
           <ScrollView
+            ref={mainScrollRef}
             style={{ flex: 1 }}
             scrollEnabled={flowPhase !== "picking"}
             bounces={flowPhase !== "picking"}

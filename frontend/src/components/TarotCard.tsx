@@ -27,7 +27,7 @@ type Props = {
 };
 
 const HAIRLINE = StyleSheet.hairlineWidth > 0 ? StyleSheet.hairlineWidth : 1;
-const CARD_BACK_IMAGE = require("../../assets/tarot/card-back.png");
+const CARD_BACK_IMAGE = require("../../assets/tarot/card-back2.png");
 
 export default function TarotCard({
   card,

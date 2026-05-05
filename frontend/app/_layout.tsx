@@ -5,7 +5,9 @@ import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import {
   CormorantGaramond_600SemiBold,
+  CormorantGaramond_600SemiBold_Italic,
   CormorantGaramond_700Bold,
+  CormorantGaramond_700Bold_Italic,
 } from "@expo-google-fonts/cormorant-garamond";
 import {
   Manrope_400Regular,
@@ -17,14 +19,25 @@ import { YesevaOne_400Regular } from "@expo-google-fonts/yeseva-one";
 import { View } from "react-native";
 import { DailyCardProvider } from "../src/context/DailyCardContext";
 import { HistoryProvider } from "../src/context/HistoryContext";
+import * as Notifications from "expo-notifications";
+import { syncDailyQuoteNotifications } from "../src/services/dailyQuoteNotifications";
 import { theme } from "../src/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 export default function RootLayout() {
   const [loaded] = useFonts({
     CormorantGaramond_600SemiBold,
+    CormorantGaramond_600SemiBold_Italic,
     CormorantGaramond_700Bold,
+    CormorantGaramond_700Bold_Italic,
     Manrope_400Regular,
     Manrope_500Medium,
     Manrope_600SemiBold,
@@ -35,6 +48,11 @@ export default function RootLayout() {
     if (loaded) {
       SplashScreen.hideAsync().catch(() => {});
     }
+  }, [loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    syncDailyQuoteNotifications().catch(() => {});
   }, [loaded]);
 
   if (!loaded) {

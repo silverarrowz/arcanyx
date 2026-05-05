@@ -22,79 +22,21 @@ import {
 import { theme } from "../theme";
 import CosmicBackground from "../components/CosmicBackground";
 import GlassCard from "../components/GlassCard";
+import { useHistory } from "../context/HistoryContext";
 
 const H_PAD = 24;
 
 type DreamFilter = "all" | "recent" | "frequent" | "favorites";
 
-type MockDream = {
+type DreamHistoryEntry = {
   id: string;
   title: string;
   snippet: string;
   date: string;
   tags: string[];
   favorite: boolean;
-  /** для фильтра «Частые» — выше = чаще */
   frequencyScore: number;
 };
-
-const SYMBOL_STATS: { key: string; label: string; count: number }[] = [
-  { key: "water", label: "вода", count: 7 },
-  { key: "home", label: "дом", count: 5 },
-  { key: "flight", label: "полет", count: 4 },
-  { key: "shop", label: "магазин", count: 3 },
-  { key: "teeth", label: "зубы", count: 3 },
-  { key: "stairs", label: "лестница", count: 2 },
-  { key: "chase", label: "погоня", count: 2 },
-];
-
-const MOCK_DREAMS: MockDream[] = [
-  {
-    id: "d1",
-    title: "Сон о затопленном доме",
-    snippet: "Я снова оказалась в старом доме, вода поднималась по лестнице…",
-    date: "12 мая",
-    tags: ["вода", "дом", "тревога"],
-    favorite: false,
-    frequencyScore: 8,
-  },
-  {
-    id: "d2",
-    title: "Полёт над городом",
-    snippet: "Высоко над огнями — ветер в лицо и ощущение полной свободы.",
-    date: "9 мая",
-    tags: ["полет", "город", "свобода"],
-    favorite: true,
-    frequencyScore: 6,
-  },
-  {
-    id: "d3",
-    title: "Бесконечный магазин",
-    snippet: "Коридоры с витринами не кончались, я искала выход и не могла выбрать.",
-    date: "4 мая",
-    tags: ["магазин", "поиск", "выбор"],
-    favorite: false,
-    frequencyScore: 4,
-  },
-  {
-    id: "d4",
-    title: "Погоня по ночному парку",
-    snippet: "За спиной шаги, я бежала к выходу, но аллеи повторялись.",
-    date: "1 мая",
-    tags: ["погоня", "ночь", "страх"],
-    favorite: false,
-    frequencyScore: 5,
-  },
-  {
-    id: "d5",
-    title: "Зубы рассыпаются в руке",
-    snippet: "Тревожный сон — касалась зубов, и они крошились один за другим.",
-    date: "28 апр.",
-    tags: ["зубы", "тело", "тревога"],
-    favorite: true,
-    frequencyScore: 3,
-  },
-];
 
 const FILTERS: { id: DreamFilter; label: string }[] = [
   { id: "all", label: "Все" },
@@ -123,22 +65,57 @@ type Props = {
 };
 
 export default function DreamHistoryScreen({ embedded = false }: Props) {
+  const { items } = useHistory();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<DreamFilter>("all");
-  const [favorites, setFavorites] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(MOCK_DREAMS.map((d) => [d.id, d.favorite])),
-  );
+  const [favorites, setFavorites] = useState<Record<string, boolean>>({});
+
+  const dreams = useMemo<DreamHistoryEntry[]>(() => {
+    return items
+      .filter((item) => item.type === "dream")
+      .map((item) => {
+        const tags = item.dreamSymbols && item.dreamSymbols.length > 0
+          ? item.dreamSymbols
+          : ["сон"];
+        const interpretation = item.dreamInterpretation ?? item.answer;
+        const title = item.answer || "Толкование сна";
+        return {
+          id: item.id,
+          title,
+          snippet: interpretation,
+          date: formatDate(item.date),
+          tags,
+          favorite: Boolean(favorites[item.id]),
+          frequencyScore: tags.length,
+        };
+      });
+  }, [favorites, items]);
+
+  const symbolStats = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const dream of dreams) {
+      for (const tag of dream.tags) {
+        const key = tag.trim().toLowerCase();
+        if (!key) continue;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([label, count]) => ({ key: label, label, count }));
+  }, [dreams]);
 
   const filteredDreams = useMemo(() => {
     const q = query.trim().toLowerCase();
-    let list = [...MOCK_DREAMS];
+    let list = [...dreams];
 
     if (filter === "recent") {
       list = list.slice(0, 3);
     } else if (filter === "frequent") {
       list.sort((a, b) => b.frequencyScore - a.frequencyScore);
     } else if (filter === "favorites") {
-      list = list.filter((d) => favorites[d.id]);
+      list = list.filter((d) => favorites[d.id] || d.favorite);
     }
 
     if (!q) return list;
@@ -146,7 +123,7 @@ export default function DreamHistoryScreen({ embedded = false }: Props) {
       const hay = `${d.title} ${d.snippet} ${d.tags.join(" ")}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [query, filter, favorites]);
+  }, [query, filter, favorites, dreams]);
 
   const toggleFavorite = (id: string) => {
     setFavorites((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -189,7 +166,7 @@ export default function DreamHistoryScreen({ embedded = false }: Props) {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.symbolChipsRow}
       >
-        {SYMBOL_STATS.map((s) => (
+        {symbolStats.map((s) => (
           <Pressable
             key={s.key}
             style={({ pressed }) => [styles.symbolStatChip, pressed && { opacity: 0.88 }]}
@@ -203,37 +180,42 @@ export default function DreamHistoryScreen({ embedded = false }: Props) {
         ))}
       </ScrollView>
 
-      <GlassCard
-        borderColor={theme.colors.borderPurple}
-        intensity={18}
-        surfaceColor="rgba(98,82,142,0.14)"
-        overlayColor="rgba(116,95,168,0.1)"
-        style={styles.insightCard}
-      >
-        <View style={styles.insightMoon}>
-          <LinearGradient
-            colors={["rgba(157,124,230,0.45)", "rgba(35,31,58,0.9)"]}
-            style={StyleSheet.absoluteFill}
-          />
-          <Moon color={theme.colors.gold} size={22} strokeWidth={1.5} />
-        </View>
-        <View style={styles.insightCopy}>
-          <Text style={styles.insightLine}>
-            Чаще всего вам снятся:{" "}
-            <Text style={styles.insightHighlight}>вода</Text>
-            {" и "}
-            <Text style={styles.insightHighlight}>дом</Text>
-          </Text>
-          <Text style={styles.insightSub}>
-            Эти символы встречались 12 раз за последний месяц
-          </Text>
-        </View>
-        <View style={styles.insightDecor} pointerEvents="none">
-          <View style={{ opacity: 0.28 }}>
-            <Sparkles color={theme.colors.mauve} size={14} strokeWidth={1.4} />
+      {symbolStats.length > 0 ? (
+        <GlassCard
+          borderColor={theme.colors.borderPurple}
+          intensity={18}
+          surfaceColor="rgba(98,82,142,0.14)"
+          overlayColor="rgba(116,95,168,0.1)"
+          style={styles.insightCard}
+        >
+          <View style={styles.insightMoon}>
+            <LinearGradient
+              colors={["rgba(157,124,230,0.45)", "rgba(35,31,58,0.9)"]}
+              style={StyleSheet.absoluteFill}
+            />
+            <Moon color={theme.colors.gold} size={22} strokeWidth={1.5} />
           </View>
-        </View>
-      </GlassCard>
+          <View style={styles.insightCopy}>
+            <Text style={styles.insightLine}>
+              Чаще всего вам снятся:{" "}
+              <Text style={styles.insightHighlight}>{symbolStats[0]?.label}</Text>
+              {symbolStats[1] ? " и " : ""}
+              {symbolStats[1] ? (
+                <Text style={styles.insightHighlight}>{symbolStats[1]?.label}</Text>
+              ) : null}
+            </Text>
+            <Text style={styles.insightSub}>
+              Эти символы встречались {symbolStats[0]?.count ?? 0}
+              {"+"} раз в ваших последних толкованиях
+            </Text>
+          </View>
+          <View style={styles.insightDecor} pointerEvents="none">
+            <View style={{ opacity: 0.28 }}>
+              <Sparkles color={theme.colors.mauve} size={14} strokeWidth={1.4} />
+            </View>
+          </View>
+        </GlassCard>
+      ) : null}
 
       <View style={styles.filterWrap}>
         <ScrollView
@@ -327,6 +309,16 @@ export default function DreamHistoryScreen({ embedded = false }: Props) {
           </GlassCard>
         );
       })}
+
+      {filteredDreams.length === 0 ? (
+        <View style={styles.empty}>
+          <Sparkles color={theme.colors.textDim} size={26} strokeWidth={1.7} />
+          <Text style={styles.emptyTitle}>История снов пока пуста</Text>
+          <Text style={styles.emptyText}>
+            Добавьте толкование в разделе Сонник — и оно появится здесь.
+          </Text>
+        </View>
+      ) : null}
 
       <View style={{ height: 120 }} />
     </ScrollView>
@@ -619,5 +611,23 @@ const styles = StyleSheet.create({
   },
   starBtn: {
     padding: 4,
+  },
+  empty: {
+    alignItems: "center",
+    paddingTop: 56,
+    gap: 10,
+  },
+  emptyTitle: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.heading,
+    fontSize: 20,
+  },
+  emptyText: {
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.body,
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 19,
+    maxWidth: 270,
   },
 });

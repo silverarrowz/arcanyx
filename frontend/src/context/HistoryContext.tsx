@@ -18,7 +18,7 @@ export type TarotCardSnapshot = {
 
 export type HistoryItem = {
   id: string;
-  type: "oracle" | "tarot";
+  type: "oracle" | "tarot" | "dream";
   date: string; // ISO
   question: string;
   answer: string;
@@ -35,6 +35,11 @@ export type HistoryItem = {
   cardsSnapshot?: TarotCardSnapshot[];
   /** Short synthesized interpretation for multi-card spreads (local mock, no AI). */
   tarotSummaryRu?: string;
+  dreamText?: string;
+  dreamInterpretation?: string;
+  dreamSymbols?: string[];
+  dreamAdvice?: string;
+  dreamDisclaimer?: string;
 };
 
 type HistoryContextValue = {
