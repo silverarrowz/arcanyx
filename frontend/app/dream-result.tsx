@@ -226,15 +226,15 @@ const styles = StyleSheet.create({
   },
   blockTitle: {
     color: theme.colors.text,
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 15,
+    fontFamily: theme.fonts.heading,
+    fontSize: 20,
     marginBottom: 8,
   },
   bodyText: {
-    color: theme.colors.textDim,
+    color: theme.colors.text,
     fontFamily: theme.fonts.body,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 22,
   },
   chipsWrap: {
     flexDirection: "row",
