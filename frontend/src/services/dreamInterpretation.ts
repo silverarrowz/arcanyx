@@ -9,7 +9,6 @@ export type DreamInterpretResponse = {
   interpretation: string;
   symbols: string[];
   advice: string;
-  disclaimer: string;
   provider: string;
   fallback: boolean;
 };
@@ -38,7 +37,6 @@ function isValidResponse(value: unknown): value is DreamInterpretResponse {
     Array.isArray(v.symbols) &&
     v.symbols.every((s) => typeof s === "string") &&
     typeof v.advice === "string" &&
-    typeof v.disclaimer === "string" &&
     typeof v.provider === "string" &&
     typeof v.fallback === "boolean"
   );

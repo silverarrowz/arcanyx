@@ -1354,7 +1354,7 @@ const styles = StyleSheet.create({
   /* Tarot card slot (right) */
   bigCardArt: {
     width: 118,
-    height: 180,
+    height: 160,
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible",

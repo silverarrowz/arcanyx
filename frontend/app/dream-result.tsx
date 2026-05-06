@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import { ChevronLeft, Moon, Sparkles } from "lucide-react-native";
+import { Moon, Sparkles, X } from "lucide-react-native";
 import { theme } from "../src/theme";
 import CosmicBackground from "../src/components/CosmicBackground";
 import GlassCard from "../src/components/GlassCard";
@@ -43,9 +43,8 @@ export default function DreamResultScreen() {
       <CosmicBackground />
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.topBar}>
-          <Pressable onPress={handleBack} hitSlop={10} style={styles.backBtn}>
-            <ChevronLeft color={theme.colors.text} size={19} strokeWidth={2} />
-            <Text style={styles.backLabel}>Назад</Text>
+          <Pressable onPress={handleBack} hitSlop={10} style={styles.closeBtn}>
+            <X color={theme.colors.text} size={20} strokeWidth={1.8} />
           </Pressable>
         </View>
 
@@ -80,7 +79,7 @@ export default function DreamResultScreen() {
               <View style={styles.heroContent}>
                 <View style={styles.heroEyebrow}>
                   <Sparkles color={theme.colors.gold} size={12} strokeWidth={1.8} />
-                  <Text style={styles.heroEyebrowText}>ВАШЕ ТОЛКОВАНИЕ СНА</Text>
+                  <Text style={styles.heroEyebrowText}>ЗНАЧЕНИЕ ВАШЕГО СНА</Text>
                 </View>
                 <Text style={styles.title}>{dream.answer}</Text>
                 {dream.date ? <Text style={styles.date}>{formatDate(dream.date)}</Text> : null}
@@ -108,7 +107,7 @@ export default function DreamResultScreen() {
               style={styles.block}
             >
               <View style={styles.blockInner}>
-                <Text style={styles.blockTitle}>Толкование</Text>
+                <Text style={styles.blockTitle}>Расшифровка</Text>
                 <Text style={styles.bodyText}>{dream.dreamInterpretation ?? dream.answer}</Text>
               </View>
             </GlassCard>
@@ -149,10 +148,6 @@ export default function DreamResultScreen() {
               </GlassCard>
             ) : null}
 
-            {dream.dreamDisclaimer ? (
-              <Text style={styles.disclaimer}>{dream.dreamDisclaimer}</Text>
-            ) : null}
-
             <View style={{ height: 36 }} />
           </ScrollView>
         )}
@@ -165,22 +160,21 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg },
   safe: { flex: 1 },
   topBar: {
-    paddingHorizontal: 20,
-    paddingTop: 6,
-    paddingBottom: 2,
-  },
-  backBtn: {
     flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    justifyContent: "flex-end",
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
-  backLabel: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 14,
+  closeBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(35,31,58,0.65)",
+    borderWidth: 1,
+    borderColor: theme.colors.borderStrong,
   },
   scroll: {
     paddingHorizontal: 24,
@@ -196,8 +190,7 @@ const styles = StyleSheet.create({
     opacity: 0.95,
   },
   heroContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    padding: 24,
     minHeight: 220,
     justifyContent: "flex-end",
   },
@@ -229,8 +222,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   blockInner: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    padding: 24
   },
   blockTitle: {
     color: theme.colors.text,
@@ -261,14 +253,6 @@ const styles = StyleSheet.create({
     color: theme.colors.lilac,
     fontFamily: theme.fonts.bodyMedium,
     fontSize: 11,
-  },
-  disclaimer: {
-    marginTop: 12,
-    color: theme.colors.textMuted,
-    fontFamily: theme.fonts.body,
-    fontSize: 11,
-    lineHeight: 16,
-    paddingHorizontal: 2,
   },
   emptyWrap: {
     flex: 1,

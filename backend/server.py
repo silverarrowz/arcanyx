@@ -48,7 +48,6 @@ class DreamInterpretResponse(BaseModel):
     interpretation: str
     symbols: List[str]
     advice: str
-    disclaimer: str
     provider: str = "gemini"
     fallback: bool = False
 
@@ -66,7 +65,6 @@ def build_fallback_response() -> DreamInterpretResponse:
             "Запишите ключевые детали сна и чувства после пробуждения. "
             "Это поможет заметить повторяющиеся мотивы и лучше понять свои реакции."
         ),
-        disclaimer="Интерпретация носит справочный характер и не является медицинской рекомендацией.",
         provider="fallback",
         fallback=True,
     )
@@ -112,13 +110,16 @@ def build_gemini_request_body(payload: DreamInterpretRequest) -> dict:
     system_prompt = (
         "Ты эмпатичный толкователь снов. "
         "Ответь строго JSON-объектом без markdown. "
-        "Поля: title, interpretation, symbols, advice, disclaimer. "
+        "Поля: title, interpretation, symbols, advice. "
         "title: краткий заголовок. "
-        "interpretation: 2-4 предложения. "
-        "symbols: массив из 3-6 коротких символов или тем на русском. "
+        "interpretation: 5-6 предложений. "
+        "symbols: массив из 3-4 простых конкретных символов из самого сна на русском. "
+        "Это должны быть объекты, места, существа, действия или события, которые явно присутствуют в тексте сна. "
+        "Не добавляй абстрактные темы, эмоции или интерпретации в symbols. "
         "advice: 1-2 предложения. "
-        "disclaimer: короткий дисклеймер на русском, что это не медицинская диагностика. "
         "Тон: бережный, не категоричный, без мистического запугивания."
+        "Не утверждай, что сон точно означает что-то; используй формулировки вроде "
+        "'может указывать', 'похоже', 'возможно', 'вероятно' и т.п."
     )
 
     user_payload = {

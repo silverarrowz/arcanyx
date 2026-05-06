@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { useRouter } from "expo-router";
 import {
   Platform,
   Pressable,
@@ -98,6 +99,7 @@ type Props = {
 };
 
 export default function DreamHistoryScreen({ embedded = false }: Props) {
+  const router = useRouter();
   const { items } = useHistory();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<DreamFilter>("all");
@@ -291,55 +293,65 @@ export default function DreamHistoryScreen({ embedded = false }: Props) {
         const { Icon, tint } = dreamIcon(d.id);
         const isFav = favorites[d.id];
         return (
-          <GlassCard
+          <Pressable
             key={d.id}
-            borderColor={theme.colors.border}
-            intensity={20}
-            surfaceColor="rgba(35,31,58,0.42)"
-            style={styles.dreamCard}
+            onPress={() => router.push(`/dream-result?id=${encodeURIComponent(d.id)}` as never)}
+            style={({ pressed }) => [styles.dreamCardPress, pressed && { opacity: 0.95 }]}
           >
-            <View style={styles.dreamCardRow}>
-              <View style={[styles.dreamIconWrap, { borderColor: tint + "66" }]}>
-                <LinearGradient
-                  colors={[`${tint}30`, "rgba(18,16,34,0.75)"]}
-                  style={StyleSheet.absoluteFill}
-                />
-                <Icon color={tint} size={24} strokeWidth={1.35} />
-              </View>
-              <View style={styles.dreamCardMain}>
-                <View style={styles.dreamTitleRow}>
-                  <Text style={styles.dreamTitle} numberOfLines={2}>
-                    {d.title}
-                  </Text>
-                  <Text style={styles.dreamDate}>{d.date}</Text>
-                </View>
-                <Text style={styles.dreamSnippet} numberOfLines={2}>
-                  {d.snippet}
-                </Text>
-                <View style={styles.dreamFooter}>
-                  <View style={styles.dreamTags}>
-                    {d.tags.map((t) => (
-                      <View key={t} style={styles.tagChip}>
-                        <Text style={styles.tagChipText}>{t}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  <Pressable
-                    hitSlop={10}
-                    onPress={() => toggleFavorite(d.id)}
-                    style={styles.starBtn}
-                  >
-                    <Star
-                      color={isFav ? theme.colors.gold : theme.colors.textDim}
-                      size={20}
-                      strokeWidth={1.65}
-                      fill={isFav ? theme.colors.gold : "none"}
+            <GlassCard
+              borderColor={theme.colors.border}
+              intensity={20}
+              surfaceColor="rgba(35,31,58,0.42)"
+              style={styles.dreamCard}
+            >
+              <View style={styles.dreamCardInner}>
+                <View style={styles.dreamCardRow}>
+                  <View style={[styles.dreamIconWrap, { borderColor: tint + "66" }]}>
+                    <LinearGradient
+                      colors={[`${tint}30`, "rgba(18,16,34,0.75)"]}
+                      style={StyleSheet.absoluteFill}
                     />
-                  </Pressable>
+                    <Icon color={tint} size={24} strokeWidth={1.35} />
+                  </View>
+                  <View style={styles.dreamCardMain}>
+                    <View style={styles.dreamTitleRow}>
+                      <Text style={styles.dreamTitle} numberOfLines={2}>
+                        {d.title}
+                      </Text>
+                      <Text style={styles.dreamDate}>{d.date}</Text>
+                    </View>
+                    <Text style={styles.dreamSnippet} numberOfLines={2}>
+                      {d.snippet}
+                    </Text>
+                    <View style={styles.dreamFooter}>
+                      <View style={styles.dreamTags}>
+                        {d.tags.map((t) => (
+                          <View key={t} style={styles.tagChip}>
+                            <Text style={styles.tagChipText}>{t}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      <Pressable
+                        hitSlop={10}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          toggleFavorite(d.id);
+                        }}
+                        style={styles.starBtn}
+                      >
+                        <Star
+                          color={isFav ? theme.colors.gold : theme.colors.textDim}
+                          size={20}
+                          strokeWidth={1.65}
+                          fill={isFav ? theme.colors.gold : "none"}
+                        />
+                      </Pressable>
+                    </View>
+                  </View>
                 </View>
               </View>
-            </View>
-          </GlassCard>
+            </GlassCard>
+          </Pressable>
         );
       })}
 
@@ -533,7 +545,8 @@ const styles = StyleSheet.create({
   },
 
   filterWrap: {
-    marginBottom: 14,
+    marginTop: 2,
+    marginBottom: 12,
   },
   filterScroll: {
     flexDirection: "row",
@@ -566,11 +579,15 @@ const styles = StyleSheet.create({
     color: "#FFF7EA",
   },
 
-  dreamCard: {
+  dreamCardPress: {
     marginBottom: 12,
+  },
+  dreamCard: {
+    borderRadius: theme.radius.lg,
+  },
+  dreamCardInner: {
     paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: theme.radius.lg,
   },
   dreamCardRow: {
     flexDirection: "row",

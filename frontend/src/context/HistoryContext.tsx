@@ -39,7 +39,6 @@ export type HistoryItem = {
   dreamInterpretation?: string;
   dreamSymbols?: string[];
   dreamAdvice?: string;
-  dreamDisclaimer?: string;
 };
 
 type HistoryContextValue = {

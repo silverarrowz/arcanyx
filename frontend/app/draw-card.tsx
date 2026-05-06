@@ -733,6 +733,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     paddingHorizontal: 18,
     paddingTop: 8,
+    paddingBottom: 16,
   },
   closeBtn: {
     width: 38,

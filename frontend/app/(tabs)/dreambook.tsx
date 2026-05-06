@@ -189,7 +189,6 @@ console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpr
         dreamInterpretation: response.interpretation,
         dreamSymbols: response.symbols,
         dreamAdvice: response.advice,
-        dreamDisclaimer: response.disclaimer,
       });
       router.push(`/dream-result?id=${encodeURIComponent(dreamId)}` as never);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
