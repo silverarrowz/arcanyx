@@ -100,8 +100,8 @@ def strip_json_markdown(text: str) -> str:
 
 def get_models_to_try() -> List[str]:
     primary_model = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview").strip()
-    fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash").strip()
-    second_fallback_model = os.getenv("GEMINI_SECOND_FALLBACK_MODEL", "").strip()
+    fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite").strip()
+    second_fallback_model = os.getenv("GEMINI_SECOND_FALLBACK_MODEL", "gemini-2.5-flash").strip()
 
     models: List[str] = []
 
