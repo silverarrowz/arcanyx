@@ -37,11 +37,10 @@ app.add_middleware(
 DREAM_INTERPRET_CACHE_TTL_SECONDS = 600
 dream_interpret_cache: Dict[str, Tuple[float, "DreamInterpretResponse"]] = {}
 
-RETRYABLE_HTTP_STATUSES = {429, 500, 502, 503, 504}
+RETRYABLE_HTTP_STATUSES = {408, 409, 429, 500, 502, 503, 504}
 
-GEMINI_REQUEST_TIMEOUT_SECONDS = 35
-GEMINI_MAX_RETRIES_PER_MODEL = 3
-GEMINI_FALLBACK_MODEL_RETRIES = 2
+MISTRAL_REQUEST_TIMEOUT_SECONDS = 45
+MISTRAL_MAX_ATTEMPTS = 3
 
 
 class DreamInterpretRequest(BaseModel):
@@ -55,23 +54,17 @@ class DreamInterpretResponse(BaseModel):
     interpretation: str
     symbols: List[str]
     advice: str
-    provider: str = "gemini"
+    provider: str = "mistral"
     fallback: bool = False
 
 
 def build_fallback_response() -> DreamInterpretResponse:
     return DreamInterpretResponse(
         title="Сон сохранён для повторного толкования",
-        interpretation=(
-            "Сейчас сервис толкования временно перегружен, поэтому не удалось "
-            "получить персональную интерпретацию. Сон можно попробовать истолковать "
-            "ещё раз немного позже."
-        ),
+        interpretation=
+            "Сейчас сервис толкования временно недоступен. ",
         symbols=[],
-        advice=(
-            "Попробуйте повторить запрос позже. Бесплатную попытку лучше считать "
-            "использованной только после успешного толкования."
-        ),
+        advice="Попробуйте повторить запрос позже.",
         provider="fallback",
         fallback=True,
     )
@@ -98,84 +91,6 @@ def strip_json_markdown(text: str) -> str:
     return text
 
 
-def get_models_to_try() -> List[str]:
-    primary_model = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview").strip()
-    fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite").strip()
-    second_fallback_model = os.getenv("GEMINI_SECOND_FALLBACK_MODEL", "gemini-2.5-flash").strip()
-
-    models: List[str] = []
-
-    for model in [primary_model, fallback_model, second_fallback_model]:
-        if model and model not in models:
-            models.append(model)
-
-    return models
-
-
-def build_gemini_request_body(payload: DreamInterpretRequest) -> dict:
-    normalized_dream_text = payload.dream_text.strip()
-
-    system_prompt = (
-        "Ты эмпатичный толкователь снов с психологическим, символическим подходом. "
-        "Ответь строго JSON-объектом без markdown. "
-        "Поля: title, interpretation, symbols, advice. "
-
-        "Смотри на сон не как на предсказание, а как на образ внутреннего состояния человека. "
-        "Интерпретация должна звучать как психологическое размышление, но понятно для пользователя. "
-        "Обращай внимание на символы, внутренние противоречия, желания, страхи, границы, переходы, отношения с собой и миром. "
-        "Не используй диагнозы, мистическое запугивание и категоричные утверждения. Формулируй мягко. "
-
-        "title: краткий заголовок до 8 слов. "
-
-        "interpretation: 5-6 коротких предложений. "
-        "Пиши образно, но ясно. "
-        "Не пересказывай сон целиком, а связывай его образы с возможными внутренними переживаниями. "
-
-        "symbols: массив из 3-6 простых конкретных символов из самого сна на русском. "
-        "Это должны быть значимые объекты, места, существа, действия или события, явно присутствующие в тексте сна. "
-        "Хорошие примеры: дом, вода, река, полёт, погоня, переезд, лес, поезд, ребёнок, собака. "
-        "Плохие примеры: внутренний ребёнок, скрытая тайна, эмоциональное спокойствие, страх перемен, поиск себя. "
-        "Каждый символ должен быть 1-2 слова, в именительном падеже, без лишних прилагательных. "
-        "Не добавляй абстрактные темы, эмоции или интерпретации в symbols. "
-
-        "advice: 1-2 предложения. "
-        "Совет должен быть мягким, практичным и психологически бережным. "
-
-        "Не используй гендерно-маркированные формулировки. "
-        "Не обращайся к пользователю в женском или мужском роде. "
-        "Избегай слов вроде: сама, сам, готова, готов, устала, устал, почувствовала, почувствовал. "
-        "Используй нейтральные формулировки: 'о себе', 'внутри себя', 'может быть важно', 'стоит обратить внимание'."
-    )
-
-    user_payload = {
-        "dream_text": normalized_dream_text,
-        "language": payload.language,
-        "timezone": payload.timezone,
-    }
-
-    return {
-        "contents": [
-            {
-                "role": "user",
-                "parts": [
-                    {
-                        "text": (
-                            f"{system_prompt}\n\n"
-                            f"Данные пользователя:\n"
-                            f"{json.dumps(user_payload, ensure_ascii=False)}"
-                        )
-                    }
-                ],
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.65,
-            "maxOutputTokens": 900,
-            "responseMimeType": "application/json",
-        },
-    }
-
-
 def get_retry_after_seconds(response: Optional[requests.Response]) -> Optional[float]:
     if response is None:
         return None
@@ -191,21 +106,6 @@ def get_retry_after_seconds(response: Optional[requests.Response]) -> Optional[f
         return None
 
 
-def is_retryable_http_error(exc: requests.HTTPError) -> bool:
-    status_code = exc.response.status_code if exc.response is not None else None
-    return status_code in RETRYABLE_HTTP_STATUSES
-
-
-def is_retryable_request_error(exc: requests.RequestException) -> bool:
-    return isinstance(
-        exc,
-        (
-            requests.Timeout,
-            requests.ConnectionError,
-        ),
-    )
-
-
 def get_backoff_delay_seconds(
     attempt_index: int,
     response: Optional[requests.Response] = None,
@@ -213,52 +113,91 @@ def get_backoff_delay_seconds(
     retry_after_seconds = get_retry_after_seconds(response)
 
     if retry_after_seconds is not None:
-        return min(retry_after_seconds, 8.0)
+        return min(retry_after_seconds, 10.0)
 
     base_delay = 0.8 * (2 ** attempt_index)
-    jitter = random.uniform(0.1, 0.7)
+    jitter = random.uniform(0.2, 0.8)
 
-    return min(base_delay + jitter, 8.0)
+    return min(base_delay + jitter, 10.0)
 
 
-def parse_gemini_response(
-    body: dict,
-    model_name: str,
-) -> DreamInterpretResponse:
-    text = (
-        body.get("candidates", [{}])[0]
-        .get("content", {})
-        .get("parts", [{}])[0]
-        .get("text", "")
-        .strip()
+def is_retryable_http_error(exc: requests.HTTPError) -> bool:
+    status_code = exc.response.status_code if exc.response is not None else None
+    return status_code in RETRYABLE_HTTP_STATUSES
+
+
+def build_mistral_request_body(payload: DreamInterpretRequest) -> dict:
+    normalized_dream_text = payload.dream_text.strip()
+
+    user_payload = {
+        "dream_text": normalized_dream_text,
+        "language": payload.language,
+        "timezone": payload.timezone,
+    }
+
+    return {
+        "agent_id": os.getenv("MISTRAL_AGENT_ID"),
+        "messages": [
+            {
+                "role": "user",
+                "content": (
+                    "Истолкуй сон по этим данным пользователя. "
+                    "Верни только JSON по заданной схеме агента.\n\n"
+                    f"{json.dumps(user_payload, ensure_ascii=False)}"
+                ),
+            }
+        ],
+        "stream": False,
+        "max_tokens": 900,
+        "temperature": 0.65,
+
+        # Your agent already has structured output configured,
+        # but keeping json_object here is a useful extra guard.
+        "response_format": {
+            "type": "json_object"
+        },
+    }
+
+
+def parse_mistral_response(body: dict) -> DreamInterpretResponse:
+    content = (
+        body.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
     )
 
-    if not text:
-        logger.error("Gemini returned empty text | model=%s | body=%s", model_name, body)
-        raise ValueError("Gemini returned an empty response")
+    if not content:
+        logger.error("Mistral returned empty content | body=%s", body)
+        raise ValueError("Mistral returned an empty response")
+
+    if isinstance(content, list):
+        text = "".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict)
+        ).strip()
+    else:
+        text = str(content).strip()
 
     text = strip_json_markdown(text)
 
     parsed = json.loads(text)
+
     interpreted = DreamInterpretResponse(**parsed)
+    interpreted.provider = f"mistral:{body.get('model', 'agent')}"
     interpreted.fallback = False
-    interpreted.provider = f"gemini:{model_name}"
 
     return interpreted
 
 
-def call_gemini_model_once(
-    model_name: str,
+def call_mistral_once(
     api_key: str,
     request_body: dict,
 ) -> DreamInterpretResponse:
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{model_name}:generateContent"
-    )
+    url = "https://api.mistral.ai/v1/agents/completions"
 
     headers = {
-        "x-goog-api-key": api_key,
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
 
@@ -266,43 +205,39 @@ def call_gemini_model_once(
         url,
         headers=headers,
         json=request_body,
-        timeout=GEMINI_REQUEST_TIMEOUT_SECONDS,
+        timeout=MISTRAL_REQUEST_TIMEOUT_SECONDS,
     )
 
     if not response.ok:
         logger.error(
-            "Gemini HTTP error | model=%s | status=%s | body=%s",
-            model_name,
+            "Mistral HTTP error | status=%s | body=%s",
             response.status_code,
-            response.text[:1000],
+            response.text[:1500],
         )
         response.raise_for_status()
 
     body = response.json()
-    return parse_gemini_response(body=body, model_name=model_name)
+
+    return parse_mistral_response(body)
 
 
-def call_gemini_model_with_retries(
-    model_name: str,
+def call_mistral_with_retries(
     api_key: str,
     request_body: dict,
-    max_attempts: int,
 ) -> DreamInterpretResponse:
     last_error: Optional[Exception] = None
 
-    for attempt_index in range(max_attempts):
+    for attempt_index in range(MISTRAL_MAX_ATTEMPTS):
         attempt_number = attempt_index + 1
 
         try:
             logger.info(
-                "Calling Gemini | model=%s | attempt=%s/%s",
-                model_name,
+                "Calling Mistral Agent | attempt=%s/%s",
                 attempt_number,
-                max_attempts,
+                MISTRAL_MAX_ATTEMPTS,
             )
 
-            return call_gemini_model_once(
-                model_name=model_name,
+            return call_mistral_once(
                 api_key=api_key,
                 request_body=request_body,
             )
@@ -313,16 +248,14 @@ def call_gemini_model_with_retries(
 
             if not is_retryable_http_error(exc):
                 logger.warning(
-                    "Non-retryable Gemini HTTP error | model=%s | status=%s",
-                    model_name,
+                    "Non-retryable Mistral HTTP error | status=%s",
                     status_code,
                 )
                 raise
 
-            if attempt_index == max_attempts - 1:
+            if attempt_index == MISTRAL_MAX_ATTEMPTS - 1:
                 logger.warning(
-                    "Gemini retryable HTTP error exhausted | model=%s | status=%s",
-                    model_name,
+                    "Mistral retryable HTTP error exhausted | status=%s",
                     status_code,
                 )
                 break
@@ -330,38 +263,24 @@ def call_gemini_model_with_retries(
             delay = get_backoff_delay_seconds(attempt_index, exc.response)
 
             logger.warning(
-                "Gemini retryable HTTP error | model=%s | status=%s | retry_in=%.2fs",
-                model_name,
+                "Mistral retryable HTTP error | status=%s | retry_in=%.2fs",
                 status_code,
                 delay,
             )
 
             time.sleep(delay)
 
-        except requests.RequestException as exc:
+        except (requests.Timeout, requests.ConnectionError) as exc:
             last_error = exc
 
-            if not is_retryable_request_error(exc):
-                logger.warning(
-                    "Non-retryable Gemini request error | model=%s | error=%s",
-                    model_name,
-                    exc,
-                )
-                raise
-
-            if attempt_index == max_attempts - 1:
-                logger.warning(
-                    "Gemini request error exhausted | model=%s | error=%s",
-                    model_name,
-                    exc,
-                )
+            if attempt_index == MISTRAL_MAX_ATTEMPTS - 1:
+                logger.warning("Mistral network error exhausted | error=%s", exc)
                 break
 
             delay = get_backoff_delay_seconds(attempt_index)
 
             logger.warning(
-                "Gemini request error | model=%s | error=%s | retry_in=%.2fs",
-                model_name,
+                "Mistral network error | error=%s | retry_in=%.2fs",
                 exc,
                 delay,
             )
@@ -371,12 +290,9 @@ def call_gemini_model_with_retries(
         except (ValueError, json.JSONDecodeError, ValidationError) as exc:
             last_error = exc
 
-            # JSON/parsing issues are sometimes temporary model output issues.
-            # Retry once or twice before switching models.
-            if attempt_index == max_attempts - 1:
+            if attempt_index == MISTRAL_MAX_ATTEMPTS - 1:
                 logger.warning(
-                    "Gemini parsing/validation error exhausted | model=%s | error=%s",
-                    model_name,
+                    "Mistral parsing/validation error exhausted | error=%s",
                     exc,
                 )
                 break
@@ -384,8 +300,7 @@ def call_gemini_model_with_retries(
             delay = get_backoff_delay_seconds(attempt_index)
 
             logger.warning(
-                "Gemini parsing/validation error | model=%s | retry_in=%.2fs | error=%s",
-                model_name,
+                "Mistral parsing/validation error | retry_in=%.2fs | error=%s",
                 delay,
                 exc,
             )
@@ -395,100 +310,19 @@ def call_gemini_model_with_retries(
     if last_error:
         raise last_error
 
-    raise RuntimeError(f"Gemini failed without a captured error for model={model_name}")
+    raise RuntimeError("Mistral failed without a captured error")
 
 
-def call_gemini_with_model_fallbacks(
-    api_key: str,
-    request_body: dict,
-    cache_key: str,
-) -> DreamInterpretResponse:
-    models_to_try = get_models_to_try()
-
-    if not models_to_try:
-        raise RuntimeError("No Gemini models configured")
-
-    last_error: Optional[Exception] = None
-
-    for model_index, model_name in enumerate(models_to_try):
-        try:
-            max_attempts = (
-                GEMINI_MAX_RETRIES_PER_MODEL
-                if model_index == 0
-                else GEMINI_FALLBACK_MODEL_RETRIES
-            )
-
-            if model_index > 0:
-                logger.warning(
-                    "Switching to Gemini fallback model | model=%s",
-                    model_name,
-                )
-
-            interpreted = call_gemini_model_with_retries(
-                model_name=model_name,
-                api_key=api_key,
-                request_body=request_body,
-                max_attempts=max_attempts,
-            )
-
-            dream_interpret_cache[cache_key] = (
-                time.time(),
-                interpreted.model_copy(deep=True),
-            )
-
-            return interpreted
-
-        except requests.HTTPError as exc:
-            last_error = exc
-            status_code = exc.response.status_code if exc.response is not None else None
-
-            # If model does not exist or is not available for your account/region,
-            # try the next configured fallback model.
-            if status_code in (404,):
-                logger.warning(
-                    "Gemini model unavailable, trying next model | model=%s | status=%s",
-                    model_name,
-                    status_code,
-                )
-                continue
-
-            # Bad request usually means prompt/config/schema issue.
-            # No fallback model will fix that.
-            if status_code == 400:
-                logger.error(
-                    "Gemini bad request. Not trying fallback models | model=%s | body=%s",
-                    model_name,
-                    exc.response.text[:1000] if exc.response is not None else "",
-                )
-                raise
-
-            logger.warning(
-                "Gemini model failed, trying next model if available | model=%s | status=%s",
-                model_name,
-                status_code,
-            )
-            continue
-
-        except (requests.RequestException, ValueError, json.JSONDecodeError, ValidationError) as exc:
-            last_error = exc
-            logger.warning(
-                "Gemini model failed, trying next model if available | model=%s | error=%s",
-                model_name,
-                exc,
-            )
-            continue
-
-    if last_error:
-        raise last_error
-
-    raise RuntimeError("All Gemini models failed")
-
-
-def gemini_interpret_dream_sync(payload: DreamInterpretRequest) -> DreamInterpretResponse:
-    api_key = os.getenv("GEMINI_API_KEY")
+def mistral_interpret_dream_sync(payload: DreamInterpretRequest) -> DreamInterpretResponse:
+    api_key = os.getenv("MISTRAL_API_KEY")
+    agent_id = os.getenv("MISTRAL_AGENT_ID")
 
     if not api_key:
-        logger.warning("GEMINI_API_KEY is not configured, returning fallback response")
+        logger.warning("MISTRAL_API_KEY is not configured, returning fallback response")
+        return build_fallback_response()
+
+    if not agent_id:
+        logger.warning("MISTRAL_AGENT_ID is not configured, returning fallback response")
         return build_fallback_response()
 
     normalized_dream_text = payload.dream_text.strip()
@@ -506,13 +340,19 @@ def gemini_interpret_dream_sync(payload: DreamInterpretRequest) -> DreamInterpre
         cached.provider = f"{cached.provider}:cache"
         return cached
 
-    request_body = build_gemini_request_body(payload)
+    request_body = build_mistral_request_body(payload)
 
-    return call_gemini_with_model_fallbacks(
+    interpreted = call_mistral_with_retries(
         api_key=api_key,
         request_body=request_body,
-        cache_key=cache_key,
     )
+
+    dream_interpret_cache[cache_key] = (
+        time.time(),
+        interpreted.model_copy(deep=True),
+    )
+
+    return interpreted
 
 
 @api_router.get("/")
@@ -528,13 +368,13 @@ async def interpret_dream(input: DreamInterpretRequest):
         raise HTTPException(status_code=400, detail="dream_text must not be empty")
 
     try:
-        return await run_in_threadpool(gemini_interpret_dream_sync, input)
+        return await run_in_threadpool(mistral_interpret_dream_sync, input)
 
     except requests.HTTPError as exc:
         status_code = exc.response.status_code if exc.response is not None else None
 
         logger.exception(
-            "Gemini HTTP error after all retries/fallback models | status=%s",
+            "Mistral HTTP error after retries | status=%s",
             status_code,
         )
 
@@ -549,9 +389,10 @@ async def interpret_dream(input: DreamInterpretRequest):
         RuntimeError,
     ) as exc:
         logger.exception(
-            "Gemini interpretation failed after all retries/fallback models, returning fallback: %s",
+            "Mistral interpretation failed after retries, returning fallback: %s",
             exc,
         )
+
         return build_fallback_response()
 
 
