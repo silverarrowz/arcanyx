@@ -42,6 +42,8 @@ RETRYABLE_HTTP_STATUSES = {408, 409, 429, 500, 502, 503, 504}
 MISTRAL_REQUEST_TIMEOUT_SECONDS = 45
 MISTRAL_MAX_ATTEMPTS = 3
 
+DEBUG_AI_ERRORS = os.getenv("DEBUG_AI_ERRORS", "false").lower() == "true"
+
 
 class DreamInterpretRequest(BaseModel):
     dream_text: str = Field(min_length=1, max_length=1500)
@@ -355,6 +357,7 @@ def mistral_interpret_dream_sync(payload: DreamInterpretRequest) -> DreamInterpr
     return interpreted
 
 
+
 @api_router.get("/")
 async def root():
     return {"message": "API is running"}
@@ -372,28 +375,38 @@ async def interpret_dream(input: DreamInterpretRequest):
 
     except requests.HTTPError as exc:
         status_code = exc.response.status_code if exc.response is not None else None
+        response_text = exc.response.text if exc.response is not None else ""
 
         logger.exception(
-            "Mistral HTTP error after retries | status=%s",
+            "Mistral HTTP error after retries | status=%s | body=%s",
             status_code,
+            response_text[:2000],
         )
+
+        if DEBUG_AI_ERRORS:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "type": "mistral_http_error",
+                    "status_code": status_code,
+                    "body": response_text[:2000],
+                },
+            )
 
         return build_fallback_response()
 
-    except (
-        requests.RequestException,
-        ValueError,
-        KeyError,
-        ValidationError,
-        json.JSONDecodeError,
-        RuntimeError,
-    ) as exc:
-        logger.exception(
-            "Mistral interpretation failed after retries, returning fallback: %s",
-            exc,
-        )
+    except Exception as exc:
+        logger.exception("Mistral interpretation failed: %s", exc)
+
+        if DEBUG_AI_ERRORS:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "type": exc.__class__.__name__,
+                    "message": str(exc),
+                },
+            )
 
         return build_fallback_response()
-
 
 app.include_router(api_router)
