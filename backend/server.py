@@ -4,7 +4,7 @@ from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Any
 import os
 import json
 import logging
@@ -22,6 +22,13 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+logger.info(
+    "Mistral config | api_key_present=%s | agent_id_present=%s | agent_id_prefix=%s",
+    bool(os.getenv("MISTRAL_API_KEY")),
+    bool(os.getenv("MISTRAL_AGENT_ID")),
+    (os.getenv("MISTRAL_AGENT_ID") or "")[:10],
+)
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -63,8 +70,10 @@ class DreamInterpretResponse(BaseModel):
 def build_fallback_response() -> DreamInterpretResponse:
     return DreamInterpretResponse(
         title="Сон сохранён для повторного толкования",
-        interpretation=
-            "Сейчас сервис толкования временно недоступен. ",
+        interpretation=(
+            "Сейчас сервис толкования временно недоступен. "
+            "Попробуйте получить интерпретацию немного позже."
+        ),
         symbols=[],
         advice="Попробуйте повторить запрос позже.",
         provider="fallback",
@@ -91,6 +100,50 @@ def strip_json_markdown(text: str) -> str:
         text = text.removesuffix("```").strip()
 
     return text
+
+
+def normalize_text_field(value: Any) -> str:
+    """
+    Mistral Agent may sometimes return a string[] even if schema says string.
+    This keeps your API response stable for the mobile app.
+    """
+    if value is None:
+        return ""
+
+    if isinstance(value, list):
+        return " ".join(
+            str(item).strip()
+            for item in value
+            if str(item).strip()
+        ).strip()
+
+    if isinstance(value, str):
+        return value.strip()
+
+    return str(value).strip()
+
+
+def normalize_symbols(value: Any) -> List[str]:
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        symbols = []
+        for item in value:
+            normalized = normalize_text_field(item)
+            if normalized:
+                symbols.append(normalized)
+        return symbols
+
+    if isinstance(value, str):
+        # If Mistral accidentally returns "дом, река, дверь"
+        return [
+            item.strip()
+            for item in value.split(",")
+            if item.strip()
+        ]
+
+    return []
 
 
 def get_retry_after_seconds(response: Optional[requests.Response]) -> Optional[float]:
@@ -138,20 +191,22 @@ def build_mistral_request_body(payload: DreamInterpretRequest) -> dict:
     }
 
     return {
-    "agent_id": os.getenv("MISTRAL_AGENT_ID"),
-    "messages": [
-        {
-            "role": "user",
-            "content": (
-                "Истолкуй сон по этим данным пользователя. "
-                "Верни только JSON по заданной схеме агента.\n\n"
-                f"{json.dumps(user_payload, ensure_ascii=False)}"
-            ),
-        }
-    ],
-    "stream": False,
-    "max_tokens": 900,
-}
+        "agent_id": os.getenv("MISTRAL_AGENT_ID"),
+        "messages": [
+            {
+                "role": "user",
+                "content": (
+                    "Истолкуй сон по этим данным пользователя. "
+                    "Верни только JSON по заданной схеме агента. "
+                    "Поля interpretation и advice должны быть строками, не массивами. "
+                    "Только symbols должен быть массивом.\n\n"
+                    f"{json.dumps(user_payload, ensure_ascii=False)}"
+                ),
+            }
+        ],
+        "stream": False,
+        "max_tokens": 900,
+    }
 
 
 def parse_mistral_response(body: dict) -> DreamInterpretResponse:
@@ -174,11 +229,36 @@ def parse_mistral_response(body: dict) -> DreamInterpretResponse:
     else:
         text = str(content).strip()
 
+    logger.info("Mistral raw content | content=%s", text[:3000])
+
     text = strip_json_markdown(text)
 
-    parsed = json.loads(text)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        logger.error("Mistral content is not valid JSON | text=%s", text[:3000])
+        raise
 
-    interpreted = DreamInterpretResponse(**parsed)
+    logger.info(
+        "Mistral parsed JSON before normalization | parsed=%s",
+        json.dumps(parsed, ensure_ascii=False)[:3000],
+    )
+
+    # Defensive normalization: backend response stays stable even if model returns arrays.
+    parsed["title"] = normalize_text_field(parsed.get("title", ""))
+    parsed["interpretation"] = normalize_text_field(parsed.get("interpretation", ""))
+    parsed["advice"] = normalize_text_field(parsed.get("advice", ""))
+    parsed["symbols"] = normalize_symbols(parsed.get("symbols", []))
+
+    try:
+        interpreted = DreamInterpretResponse(**parsed)
+    except ValidationError:
+        logger.error(
+            "Mistral JSON did not match DreamInterpretResponse after normalization | parsed=%s",
+            json.dumps(parsed, ensure_ascii=False)[:3000],
+        )
+        raise
+
     interpreted.provider = f"mistral:{body.get('model', 'agent')}"
     interpreted.fallback = False
 
@@ -207,7 +287,7 @@ def call_mistral_once(
         logger.error(
             "Mistral HTTP error | status=%s | body=%s",
             response.status_code,
-            response.text[:1500],
+            response.text[:3000],
         )
         response.raise_for_status()
 
@@ -350,7 +430,6 @@ def mistral_interpret_dream_sync(payload: DreamInterpretRequest) -> DreamInterpr
     return interpreted
 
 
-
 @api_router.get("/")
 async def root():
     return {"message": "API is running"}
@@ -373,7 +452,7 @@ async def interpret_dream(input: DreamInterpretRequest):
         logger.exception(
             "Mistral HTTP error after retries | status=%s | body=%s",
             status_code,
-            response_text[:2000],
+            response_text[:3000],
         )
 
         if DEBUG_AI_ERRORS:
@@ -382,14 +461,14 @@ async def interpret_dream(input: DreamInterpretRequest):
                 detail={
                     "type": "mistral_http_error",
                     "status_code": status_code,
-                    "body": response_text[:2000],
+                    "body": response_text[:3000],
                 },
             )
 
         return build_fallback_response()
 
     except Exception as exc:
-        logger.exception("Mistral interpretation failed: %s", exc)
+        logger.exception("Dream interpretation failed: %s", exc)
 
         if DEBUG_AI_ERRORS:
             raise HTTPException(
@@ -401,5 +480,6 @@ async def interpret_dream(input: DreamInterpretRequest):
             )
 
         return build_fallback_response()
+
 
 app.include_router(api_router)
