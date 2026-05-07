@@ -138,27 +138,20 @@ def build_mistral_request_body(payload: DreamInterpretRequest) -> dict:
     }
 
     return {
-        "agent_id": os.getenv("MISTRAL_AGENT_ID"),
-        "messages": [
-            {
-                "role": "user",
-                "content": (
-                    "Истолкуй сон по этим данным пользователя. "
-                    "Верни только JSON по заданной схеме агента.\n\n"
-                    f"{json.dumps(user_payload, ensure_ascii=False)}"
-                ),
-            }
-        ],
-        "stream": False,
-        "max_tokens": 900,
-        "temperature": 0.65,
-
-        # Your agent already has structured output configured,
-        # but keeping json_object here is a useful extra guard.
-        "response_format": {
-            "type": "json_object"
-        },
-    }
+    "agent_id": os.getenv("MISTRAL_AGENT_ID"),
+    "messages": [
+        {
+            "role": "user",
+            "content": (
+                "Истолкуй сон по этим данным пользователя. "
+                "Верни только JSON по заданной схеме агента.\n\n"
+                f"{json.dumps(user_payload, ensure_ascii=False)}"
+            ),
+        }
+    ],
+    "stream": False,
+    "max_tokens": 900,
+}
 
 
 def parse_mistral_response(body: dict) -> DreamInterpretResponse:
