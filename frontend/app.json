@@ -36,7 +36,15 @@
           "backgroundColor": "#000"
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Mystix использует микрофон, чтобы вы могли надиктовать описание сна.",
+          "speechRecognitionPermission": "Mystix использует распознавание речи, чтобы превратить вашу речь о сне в текст.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

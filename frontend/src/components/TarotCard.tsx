@@ -126,7 +126,7 @@ export default function TarotCard({
           />
           <View style={styles.edgeRim} pointerEvents="none" />
           <View style={styles.innerRim} pointerEvents="none" />
-          {!hideFrontText && (
+          {/* {!hideFrontText && (
             <View style={styles.frontOverlay} pointerEvents="none">
               <Text style={styles.frontSymbol}>{card.symbol}</Text>
               <View style={{ flex: 1 }} />
@@ -139,7 +139,7 @@ export default function TarotCard({
                 </Text>
               )}
             </View>
-          )}
+          )} */}
         </View>
       </Animated.View>
     </Pressable>

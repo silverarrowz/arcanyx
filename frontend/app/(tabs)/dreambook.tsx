@@ -17,31 +17,43 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import {
+  ArrowRight,
   Bird,
   BookOpen,
-  ChevronRight,
   DoorOpen,
   Heart,
   History,
   Layers,
+  Mic,
+  MicOff,
   Moon,
   Sparkles,
   UserRound,
   Waves,
 } from "lucide-react-native";
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { theme } from "../../src/theme";
 import CosmicBackground from "../../src/components/CosmicBackground";
 import GlassCard from "../../src/components/GlassCard";
 import DreamHistoryScreen from "../../src/screens/DreamHistoryScreen";
+import DreamInterpretLoadingScreen from "../../src/screens/DreamInterpretLoadingScreen";
 import { useRemountOnTabFocus } from "../../src/hooks/useRemountOnTabFocus";
 import { useHistory } from "../../src/context/HistoryContext";
+import { useDreamDictation } from "../../src/hooks/useDreamDictation";
 import {
+  DREAM_TEXT_MAX_LENGTH,
   interpretDream,
 } from "../../src/services/dreamInterpretation";
 
 const CARD_BG = require("../../assets/home/bg-dream.png");
 const RECENT_THUMB = require("../../assets/home/qr-dreams.png");
-const MAX_DREAM_LEN = 1500;
 /** Высота многострочного поля (скролл внутри); карточка с фоном не меняет высоту */
 const DREAM_INPUT_BOX_H = 168;
 
@@ -135,6 +147,45 @@ export default function DreamBookScreen() {
   );
   const remountKey = useRemountOnTabFocus();
 
+  const appendDictatedText = useCallback((dictated: string) => {
+    setText((prev) => {
+      const trimmedPrev = prev.trimEnd();
+      const trimmedNew = dictated.trim();
+      if (!trimmedNew) return prev;
+      if (!trimmedPrev) return trimmedNew;
+      const needsSpace = !/[\s.,;:!?…—-]$/.test(trimmedPrev);
+      return `${trimmedPrev}${needsSpace ? " " : ""}${trimmedNew}`;
+    });
+  }, []);
+
+  const dictation = useDreamDictation({
+    onFinalTranscript: appendDictatedText,
+  });
+
+  const onPressMic = useCallback(async () => {
+    Haptics.selectionAsync().catch(() => {});
+    await dictation.toggle();
+  }, [dictation]);
+
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    if (dictation.isListening) {
+      pulse.value = withRepeat(
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true,
+      );
+    } else {
+      cancelAnimation(pulse);
+      pulse.value = withTiming(0, { duration: 180 });
+    }
+  }, [dictation.isListening, pulse]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: 0.25 + pulse.value * 0.55,
+    transform: [{ scale: 0.9 + pulse.value * 0.35 }],
+  }));
+
   useEffect(() => {
     if (tab === "history") setActive("history");
     else if (tab === "interpret") setActive("interpret");
@@ -174,8 +225,6 @@ export default function DreamBookScreen() {
 
     setError(null);
     setIsLoading(true);
-    console.log("API URL:", process.env.VITE_API_URL);
-console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpret`);
     try {
       const response = await interpretDream({
         dreamText,
@@ -190,6 +239,7 @@ console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpr
         dreamSymbols: response.symbols,
         dreamAdvice: response.advice,
       });
+      setText("");
       router.push(`/dream-result?id=${encodeURIComponent(dreamId)}` as never);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
@@ -207,6 +257,10 @@ console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpr
   const symbolColW = Math.floor(
     (windowWidth - H_PAD * 2 - SYMBOL_GAP) / 2,
   );
+
+  if (isLoading) {
+    return <DreamInterpretLoadingScreen />;
+  }
 
   return (
     <View style={styles.root} testID="dreambook-root">
@@ -354,18 +408,70 @@ console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpr
                       multiline
                       scrollEnabled
                       textAlignVertical="top"
-                      maxLength={MAX_DREAM_LEN}
+                      maxLength={DREAM_TEXT_MAX_LENGTH}
                       style={styles.dreamInput}
                       underlineColorAndroid="transparent"
                     />
-                    <View style={styles.inputSparkle} pointerEvents="none">
-                      <Sparkles
-                        color="rgba(255,215,154,0.45)"
-                        size={14}
-                        strokeWidth={1.4}
-                      />
-                    </View>
+
+                    {dictation.isAvailable ? (
+                      <Pressable
+                        onPress={onPressMic}
+                        hitSlop={8}
+                        accessibilityLabel={
+                          dictation.isListening
+                            ? "Остановить запись"
+                            : "Надиктовать сон"
+                        }
+                        style={({ pressed }) => [
+                          styles.micButton,
+                          dictation.isListening && styles.micButtonActive,
+                          pressed && { opacity: 0.85 },
+                        ]}
+                      >
+                        {dictation.isListening ? (
+                          <Animated.View
+                            style={[styles.micPulse, pulseStyle]}
+                            pointerEvents="none"
+                          />
+                        ) : null}
+                        {dictation.isListening ? (
+                          <MicOff color="#FFF7EA" size={16} strokeWidth={1.9} />
+                        ) : (
+                          <Mic
+                            color={theme.colors.gold}
+                            size={16}
+                            strokeWidth={1.7}
+                          />
+                        )}
+                      </Pressable>
+                    ) : (
+                      <View style={styles.inputSparkle} pointerEvents="none">
+                        <Sparkles
+                          color="rgba(255,215,154,0.45)"
+                          size={14}
+                          strokeWidth={1.4}
+                        />
+                      </View>
+                    )}
                   </GlassCard>
+
+                  {dictation.isListening || dictation.partialTranscript ? (
+                    <View style={styles.dictationRow}>
+                      <View style={styles.dictationDot} />
+                      <Text
+                        style={styles.dictationText}
+                        numberOfLines={2}
+                      >
+                        {dictation.partialTranscript
+                          ? dictation.partialTranscript
+                          : "Слушаю… говорите свой сон."}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {dictation.error ? (
+                    <Text style={styles.dictationError}>{dictation.error}</Text>
+                  ) : null}
 
                   <Pressable
                     disabled={ctaDisabled}
@@ -382,14 +488,14 @@ console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpr
                       end={{ x: 1, y: 0 }}
                       style={styles.ctaGrad}
                     >
-                      <Sparkles
-                        color={ctaDisabled ? "#C9BED6" : "#FFF7EA"}
-                        size={15}
-                        strokeWidth={1.7}
-                      />
                       <Text style={[styles.ctaLabel, ctaDisabled && styles.ctaLabelMuted]}>
-                        {isLoading ? "Толкуем сон..." : "Получить толкование"}
+                        Узнать значение
                       </Text>
+                      <ArrowRight
+                        color={ctaDisabled ? "#C9BED6" : "#FFF7EA"}
+                        size={18}
+                        strokeWidth={2}
+                      />
                     </LinearGradient>
                   </Pressable>
 
@@ -423,7 +529,7 @@ console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpr
                 <Text style={styles.sectionLabelTight}>Популярные символы во снах</Text>
                 <Pressable hitSlop={8} style={styles.seeAllPress}>
                   <Text style={styles.seeLink}>Смотреть все</Text>
-                  <ChevronRight color={theme.colors.gold} size={14} strokeWidth={2} />
+                  <ArrowRight color={theme.colors.gold} size={14} strokeWidth={2} />
                 </Pressable>
               </View>
               <GlassCard
@@ -473,7 +579,7 @@ console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpr
                 <Text style={styles.sectionLabelTight}>Недавние толкования</Text>
                 <Pressable hitSlop={8} style={styles.seeAllPress}>
                   <Text style={styles.seeLink}>Смотреть все</Text>
-                  <ChevronRight color={theme.colors.gold} size={14} strokeWidth={2} />
+                  <ArrowRight color={theme.colors.gold} size={14} strokeWidth={2} />
                 </Pressable>
               </View>
 
@@ -506,7 +612,7 @@ console.log("Full request URL:", `${process.env.VITE_API_URL}/api/dreams/interpr
                         </View>
                       </View>
                     </View>
-                    <ChevronRight color={theme.colors.textDim} size={20} strokeWidth={1.8} />
+                    <ArrowRight color={theme.colors.textDim} size={20} strokeWidth={1.8} />
                   </Pressable>
                 ))}
               </GlassCard>
@@ -670,8 +776,8 @@ const styles = StyleSheet.create({
     height: DREAM_INPUT_BOX_H,
     maxHeight: DREAM_INPUT_BOX_H,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingRight: 36,
+    paddingTop: 12,
+    paddingBottom: 52,
     fontFamily: theme.fonts.body,
     fontSize: 14,
     lineHeight: 21,
@@ -681,6 +787,57 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 12,
     right: 12,
+  },
+  micButton: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: theme.colors.borderGold,
+    backgroundColor: "rgba(24,22,40,0.7)",
+    overflow: "hidden",
+  },
+  micButtonActive: {
+    borderColor: "rgba(239,160,192,0.8)",
+    backgroundColor: "rgba(196,123,234,0.55)",
+  },
+  micPulse: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
+    backgroundColor: "rgba(239,160,192,0.55)",
+  },
+  dictationRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  dictationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#EFA0C0",
+    marginTop: 6,
+  },
+  dictationText: {
+    flex: 1,
+    fontFamily: theme.fonts.body,
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.colors.textDim,
+    fontStyle: "italic",
+  },
+  dictationError: {
+    marginTop: 8,
+    color: "#F4B2C0",
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 11,
   },
 
   ctaWrap: {

@@ -1,8 +1,8 @@
 import type { ImageSourcePropType } from "react-native";
 
 /** Replace `art-1.png` / `art-2.png` in `assets/tarot/` with your real illustrations (same filenames or update requires). */
-const ART_A = require("../../assets/tarot/art-1.png");
-const ART_B = require("../../assets/tarot/art-2.png");
+const ART_A = require("../../assets/tarot/art-ckn2.png");
+const ART_B = require("../../assets/tarot/art-qc.png");
 
 const FRONT_ART: ImageSourcePropType[] = [ART_A, ART_B];
 

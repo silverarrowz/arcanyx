@@ -53,7 +53,7 @@ DEBUG_AI_ERRORS = os.getenv("DEBUG_AI_ERRORS", "false").lower() == "true"
 
 
 class DreamInterpretRequest(BaseModel):
-    dream_text: str = Field(min_length=1, max_length=1500)
+    dream_text: str = Field(min_length=1, max_length=3000)
     language: str = Field(default="ru")
     timezone: Optional[str] = None
 

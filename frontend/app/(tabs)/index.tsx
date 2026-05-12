@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AppState,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -22,6 +23,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -33,15 +35,14 @@ import Svg, {
   Stop,
 } from "react-native-svg";
 import {
+  ArrowRight,
   Bell,
-  BookOpenCheck,
   Circle,
   Compass,
   Flame,
   Menu,
   Moon,
   Sparkle,
-  Sparkles,
   Sun,
 } from "lucide-react-native";
 import { theme } from "../../src/theme";
@@ -52,17 +53,23 @@ import TarotCard from "../../src/components/TarotCard";
 import { DAILY_PHRASES } from "../../src/data/tarotCards";
 import { useHistory } from "../../src/context/HistoryContext";
 import { todayKey, useDailyCard } from "../../src/hooks/useDailyCard";
-import { getCardReading, getCardSuitTheme } from "../../src/data/tarotReadings";
+import { getCardReading } from "../../src/data/tarotReadings";
 import { getDailyQuote } from "../../src/data/dailyQuotes";
+import DreamInterpretLoadingScreen from "../../src/screens/DreamInterpretLoadingScreen";
+import {
+  DREAM_TEXT_MAX_LENGTH,
+  interpretDream,
+} from "../../src/services/dreamInterpretation";
 
-const HERO_BG = require("../../assets/home/bg-main.png");
+const HOME_LOGO = require("../../assets/home/logo.png");
+const HERO_BG = require("../../assets/home/bg-main3.png");
 const ENERGY_BG = require("../../assets/home/bg-energy.png");
-const DREAM_BG = require("../../assets/home/bg-dream.png");
+const DREAM_BG = require("../../assets/home/bg-main-bottom.png");
 /** Фон секции «Цитата дня» — того же набора, что и hero/энергия/сонник */
 const QUOTE_SECTION_BG = require("../../assets/home/bgi5.png");
 const QUOTE_MARK_IMG = require("../../assets/home/quote3.png");
 const TAROT_CARD_BACK = require("../../assets/tarot/card-back2.png");
-const QR_ORACLE = require("../../assets/home/chrome-ball.png");
+const QR_ORACLE = require("../../assets/home/chrome-b.jpg");
 const QR_DREAMS = require("../../assets/home/chrome-dreams3.png");
 const QR_AFFIRM = require("../../assets/home/chrome-aff.png");
 const QR_TAROT = require("../../assets/home/chrom-tarot3.png");
@@ -400,7 +407,7 @@ const HOME_DREAM_INPUT_H = 116;
  * |------------|-------------|
  * | Разрешен вылет контента за скругление стекла | `allowOverflow={!hasDrawn}` у `<GlassCard>` «Таро дня» (только пока карта не вытянута). Реализация: `GlassCard.tsx` (`overflowBackdropClip` + blur). |
  * | Рамка позиционирования ореола (до SVG) | `DAILY_TAROT_UNDRAWN_AURA.outer` ниже + `styles.cardBackAuraOuter` |
- * | Холст SVG (граница «обрезки» растрового градиента) | `DAILY_TAROT_UNDRAWN_AURA.svg` |
+ * | Холст SVG (= размер контейнера ореола) | `DAILY_TAROT_UNDRAWN_AURA.outer` |
  * | Центр/радиус градиента (маска перьевая и цвет — общие) | `DAILY_TAROT_UNDRAWN_AURA.radial` в JSX у `RadialGradient` |
  * | Прозрачность по краю (убрать прямоугольник) | `<Stop>` внутри `homeDailyCardAuraFeather` |
  * | Цвет ореола | `<Stop>` внутри `homeDailyCardAura` |
@@ -410,14 +417,17 @@ const HOME_DREAM_INPUT_H = 116;
  * | Обрезка при скролле | `ScrollView` на этой странице: `removeClippedSubviews={false}` |
  */
 const DAILY_TAROT_UNDRAWN_AURA = {
-  svg: { w: 280, h: 400 },
-  outer: { w: 280, h: 380, left: -81, top: -70 },
+  /**
+   * Larger canvas + slightly smaller radial r so the mask fades to 0 well inside
+   * the SVG bbox — avoids a visible rectangular “frame” at the edges.
+   */
+  outer: { w: 320, h: 420, left: -94, top: -82 },
   rotateDeg: "-6deg" as const,
   radial: {
-    cx: "70%",
+    cx: "60%",
     cy: "48%",
-    r: "78%",
-    fx: "44%",
+    r: "66%",
+    fx: "40%",
     fy: "35%",
   },
 } as const;
@@ -426,10 +436,11 @@ export default function HomeScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { streak } = useHistory();
+  const { streak, addItem } = useHistory();
   const [currentDayKey, setCurrentDayKey] = useState(() => todayKey());
   const [dreamText, setDreamText] = useState("");
-  const [dreamHintVisible, setDreamHintVisible] = useState(false);
+  const [dreamInterpretLoading, setDreamInterpretLoading] = useState(false);
+  const [dreamInterpretError, setDreamInterpretError] = useState<string | null>(null);
   const {
     card: dailyCard,
     hasDrawn,
@@ -550,10 +561,6 @@ export default function HomeScreen() {
     if (!dailyCard) return null;
     return getCardReading(dailyCard);
   }, [dailyCard]);
-  const dailySuitTheme = useMemo(() => {
-    if (!dailyCard) return null;
-    return getCardSuitTheme(dailyCard);
-  }, [dailyCard]);
 
   // Navigate to full draw ritual
   const handleGoToDraw = () => {
@@ -562,7 +569,7 @@ export default function HomeScreen() {
 
   const handleDreamPrompt = useCallback((prompt: string) => {
     if (prompt === "...") return;
-    setDreamHintVisible(false);
+    setDreamInterpretError(null);
     setDreamText((prev) => {
       const trimmed = prev.trim();
       if (!trimmed) return prompt;
@@ -570,21 +577,54 @@ export default function HomeScreen() {
     });
   }, []);
 
-  const handleDreamInterpret = useCallback(() => {
-    if (!dreamText.trim()) return;
-    setDreamHintVisible(true);
-  }, [dreamText]);
+  const handleDreamInterpret = useCallback(async () => {
+    const dreamSnippet = dreamText.trim();
+    if (!dreamSnippet || dreamInterpretLoading) return;
+
+    setDreamInterpretError(null);
+    setDreamInterpretLoading(true);
+    try {
+      const response = await interpretDream({
+        dreamText: dreamSnippet,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      const dreamId = addItem({
+        type: "dream",
+        question: "Толкование сна",
+        answer: response.title,
+        dreamText: dreamSnippet,
+        dreamInterpretation: response.interpretation,
+        dreamSymbols: response.symbols,
+        dreamAdvice: response.advice,
+      });
+      setDreamText("");
+      router.push(`/dream-result?id=${encodeURIComponent(dreamId)}` as never);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (e) {
+      const message =
+        e instanceof Error
+          ? e.message
+          : "Не удалось получить толкование. Попробуйте ещё раз.";
+      setDreamInterpretError(message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    } finally {
+      setDreamInterpretLoading(false);
+    }
+  }, [addItem, dreamInterpretLoading, dreamText, router]);
 
   // Path / XP — derived from streak (placeholder formula)
   const xp = Math.min(600, 180 + streak * 20);
   const xpTotal = 600;
   const xpPct = Math.max(6, Math.round((xp / xpTotal) * 100));
 
-  const dreamReady = dreamText.trim().length > 0;
+  const dreamReady = dreamText.trim().length > 0 && !dreamInterpretLoading;
 
   return (
     <View style={styles.root}>
       <CosmicBackground />
+      <Modal visible={dreamInterpretLoading} animationType="fade" statusBarTranslucent>
+        <DreamInterpretLoadingScreen />
+      </Modal>
       <SafeAreaView style={styles.safe} edges={[]}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -626,50 +666,54 @@ export default function HomeScreen() {
               style={StyleSheet.absoluteFillObject}
             />
 
-            {/* Top nav row */}
+            {/* Top nav row — menu | logo | bell */}
             <View
               style={[
                 styles.topBar,
                 { paddingTop: Math.max(insets.top, 12) },
               ]}
             >
-              <Pressable
-                style={styles.iconButton}
-                hitSlop={8}
-                testID="home-menu-btn"
-              >
-                <Menu color={theme.colors.text} size={20} strokeWidth={1.8} />
-              </Pressable>
-              <Pressable
-                style={styles.iconButton}
-                hitSlop={8}
-                testID="home-bell-btn"
-              >
-                <Bell color={theme.colors.text} size={19} strokeWidth={1.8} />
-                <View style={styles.notifDot} />
-              </Pressable>
+              <View style={[styles.topBarSide, styles.topBarSideLeft]}>
+                <Pressable
+                  style={styles.iconButton}
+                  hitSlop={8}
+                  testID="home-menu-btn"
+                >
+                  <Menu color={theme.colors.text} size={20} strokeWidth={1.8} />
+                </Pressable>
+              </View>
+              <View style={styles.topBarLogo} pointerEvents="none">
+                <Image
+                  source={HOME_LOGO}
+                  style={styles.topBarLogoImage}
+                  contentFit="contain"
+                  transition={150}
+                  accessibilityLabel="Mystix"
+                />
+              </View>
+              <View style={[styles.topBarSide, styles.topBarSideRight]}>
+                <Pressable
+                  style={styles.iconButton}
+                  hitSlop={8}
+                  testID="home-bell-btn"
+                >
+                  <Bell color={theme.colors.text} size={19} strokeWidth={1.8} />
+                  <View style={styles.notifDot} />
+                </Pressable>
+              </View>
             </View>
 
-            {/* Greeting block */}
+            {/* Greeting block — one row: salutation + name */}
             <View style={styles.greetingBlock}>
-              <Text style={styles.greetingSmall} testID="home-greeting-small">
-                {greeting},
-              </Text>
-              <View style={styles.greetingNameRow}>
+              <Text style={styles.greetingLine} numberOfLines={1}>
+                <Text style={styles.greetingSmall} testID="home-greeting-small">
+                  {greeting},{" "}
+                </Text>
                 <Text style={styles.greetingName} testID="home-greeting">
                   {userName}
                 </Text>
-                <View style={styles.greetSparkle}>
-                  <Sparkles
-                    color={theme.colors.gold}
-                    size={18}
-                    strokeWidth={1.6}
-                  />
-                </View>
-              </View>
-              <Text style={styles.greetingSub}>
-                Готов(а) настроиться на энергию дня?
               </Text>
+             
             </View>
           </View>
 
@@ -677,16 +721,10 @@ export default function HomeScreen() {
           {/* Tarot of the Day */}
           <GlassCard
             glow="purple"
-            borderColor={hasDrawn && dailySuitTheme ? dailySuitTheme.border : theme.colors.borderPurple}
+            borderColor={theme.colors.borderPurple}
             intensity={14}
-            surfaceColor={
-              hasDrawn && dailySuitTheme ? dailySuitTheme.tint : "rgba(98,82,142,0.22)"
-            }
-            overlayColor={
-              hasDrawn && dailySuitTheme
-                ? "rgba(25, 21, 40, 0.24)"
-                : "rgba(116,95,168,0.18)"
-            }
+            surfaceColor="rgba(98,82,142,0.22)"
+            overlayColor="rgba(116,95,168,0.18)"
             allowOverflow={!hasDrawn}
             style={styles.bigCard}
           >
@@ -695,11 +733,10 @@ export default function HomeScreen() {
               <View style={styles.bigCardInner}>
                 <View style={styles.bigCardText}>
                   <View style={styles.eyebrowRow}>
-                    <Sun color={theme.colors.gold} size={14} strokeWidth={1.6} />
-                    <Text style={styles.eyebrow}>ТАРО ДНЯ</Text>
+                    <Text style={styles.eyebrow}>✦ ТАРО ДНЯ ✦</Text>
                   </View>
                   <Text style={styles.bigCardTitle}>
-                    Вытяни карту{"\n"}дня
+                    Вытяни карту дня
                   </Text>
                   <Text style={styles.bigCardSub}>
                     Получи руководство{"\n"}и ясность на сегодня.
@@ -734,7 +771,7 @@ export default function HomeScreen() {
                           <Text style={styles.ctaText}>
                             {dailyCardLoading ? "Загрузка…" : "Вытянуть"}
                           </Text>
-                          <Sparkles color="#FFF7EA" size={14} strokeWidth={1.8} />
+                          <ArrowRight color="#FFF7EA" size={18} strokeWidth={1} />
                         </LinearGradient>
                       </Pressable>
                     </Animated.View>
@@ -746,8 +783,8 @@ export default function HomeScreen() {
                   <View style={styles.cardBackAuraOuter} pointerEvents="none">
                     <Animated.View style={[styles.cardBackAuraInner, cardBackAuraStyle]}>
                       <Svg
-                        width={DAILY_TAROT_UNDRAWN_AURA.svg.w}
-                        height={DAILY_TAROT_UNDRAWN_AURA.svg.h}
+                        width={DAILY_TAROT_UNDRAWN_AURA.outer.w}
+                        height={DAILY_TAROT_UNDRAWN_AURA.outer.h}
                         style={styles.cardBackAuraSvg}
                       >
                         <Defs>
@@ -761,9 +798,9 @@ export default function HomeScreen() {
                             fy={DAILY_TAROT_UNDRAWN_AURA.radial.fy}
                           >
                             <Stop offset="0%" stopColor="#FFFFFF" stopOpacity={1} />
-                            <Stop offset="35%" stopColor="#FFFFFF" stopOpacity={0.68} />
-                            <Stop offset="58%" stopColor="#FFFFFF" stopOpacity={0.18} />
-                            <Stop offset="74%" stopColor="#FFFFFF" stopOpacity={0} />
+                            <Stop offset="32%" stopColor="#FFFFFF" stopOpacity={0.68} />
+                            <Stop offset="54%" stopColor="#FFFFFF" stopOpacity={0.18} />
+                            <Stop offset="62%" stopColor="#FFFFFF" stopOpacity={0.11} />
                             <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
                           </RadialGradient>
                           <Mask id="homeDailyCardAuraMask" maskType="luminance">
@@ -781,7 +818,8 @@ export default function HomeScreen() {
                             <Stop offset="20%" stopColor="#FFD79A" stopOpacity={0.42} />
                             <Stop offset="40%" stopColor="#EFA0C0" stopOpacity={0.32} />
                             <Stop offset="58%" stopColor="#9D7CE6" stopOpacity={0.2} />
-                            <Stop offset="76%" stopColor="#9D7CE6" stopOpacity={0.08} />
+                            <Stop offset="72%" stopColor="#9D7CE6" stopOpacity={0.06} />
+                            <Stop offset="84%" stopColor="#9D7CE6" stopOpacity={0} />
                             <Stop offset="100%" stopColor="#9D7CE6" stopOpacity={0} />
                           </RadialGradient>
                         </Defs>
@@ -804,7 +842,15 @@ export default function HomeScreen() {
                     size={148}
                     style={styles.cardBackSparkleFieldInner}
                   />
-                  <View style={styles.cardPlaceholder}>
+                  <Pressable
+                    onPress={handleGoToDraw}
+                    style={({ pressed }) => [
+                      styles.cardPlaceholder,
+                      pressed && !dailyCardLoading && { opacity: 0.92 },
+                    ]}
+                    testID="home-draw-card-image"
+                    disabled={dailyCardLoading}
+                  >
                     <Image
                       source={TAROT_CARD_BACK}
                       style={styles.cardPlaceholderImage}
@@ -812,7 +858,7 @@ export default function HomeScreen() {
                       transition={150}
                     />
                     <View style={styles.cardPlaceholderBorder} />
-                  </View>
+                  </Pressable>
                 </View>
               </View>
             )}
@@ -823,29 +869,28 @@ export default function HomeScreen() {
                 <View style={styles.bigCardInner}>
                   <View style={styles.bigCardText}>
                     <View style={styles.eyebrowRow}>
-                      <Sun color={theme.colors.gold} size={14} strokeWidth={1.6} />
-                      <Text style={styles.eyebrow}>ТВОЯ КАРТА ДНЯ</Text>
+                      {/* <Sun color={theme.colors.gold} size={14} strokeWidth={1.6} /> */}
+                      <Text style={styles.eyebrow}>✦ ТВОЯ КАРТА ДНЯ ✦</Text>
                     </View>
                     <Text style={styles.cardRevealName} testID="card-of-the-day-name">
                       {dailyCard.nameRu}
                     </Text>
-                    
-                    {dailyReading && (
-                      <View
-                        style={[
-                          styles.energyPillSmall,
-                          dailySuitTheme && {
-                            borderColor: dailySuitTheme.border,
-                            backgroundColor: dailySuitTheme.tint,
-                          },
-                        ]}
-                      >
-                        <Sparkles color={theme.colors.gold} size={10} strokeWidth={1.8} />
+                     {/* Quote row below the card */}
+                {dailyReading && (
+                  <View style={styles.cardQuoteRow}>
+                    <Text style={styles.cardQuoteText}>
+                      {dailyReading.quote}
+                    </Text>
+                  </View>
+                )}
+                    {/* {dailyReading && (
+                      <View style={styles.energyPillSmall}>
+                        <ArrowRight color={theme.colors.gold} size={10} strokeWidth={1.8} />
                         <Text style={styles.energyPillText}>
                           {dailyReading.energy.toUpperCase()}
                         </Text>
                       </View>
-                    )}
+                    )} */}
 
                     <Pressable
                       onPress={handleGoToDraw}
@@ -858,8 +903,8 @@ export default function HomeScreen() {
                         end={{ x: 1, y: 0 }}
                         style={styles.ctaGradient}
                       >
-                        <BookOpenCheck color="#FFF7EA" size={14} strokeWidth={1.8} />
                         <Text style={styles.ctaText}>Подробнее</Text>
+                        <ArrowRight color="#FFF7EA" size={18} strokeWidth={1} />
                       </LinearGradient>
                     </Pressable>
                   </View>
@@ -870,23 +915,14 @@ export default function HomeScreen() {
                       card={dailyCard}
                       flipped={true}
                       onFlip={() => {}}
-                      width={112}
-                      height={168}
+                      width={122}
+                      height={178}
                       testID="card-of-the-day"
                     />
                   </View>
                 </View>
 
-                {/* Quote row below the card */}
-                {dailyReading && (
-                  <View style={styles.cardQuoteRow}>
-                    <Text style={styles.cardQuoteText}>
-                      <Text style={styles.quoteSpan}>{"“\u00A0"}</Text>
-                      {dailyReading.quote}
-                      <Text style={styles.quoteSpan}>{"\u00A0„"}</Text>
-                    </Text>
-                  </View>
-                )}
+               
               </>
             )}
           </GlassCard>
@@ -914,8 +950,7 @@ export default function HomeScreen() {
             <View style={styles.energyInner}>
               <View style={styles.energyText}>
                 <View style={styles.eyebrowRow}>
-                  <Sun color={theme.colors.gold} size={14} strokeWidth={1.6} />
-                  <Text style={styles.eyebrow}>ЭНЕРГИЯ ДНЯ</Text>
+                  <Text style={styles.eyebrow}>✦ ЭНЕРГИЯ ДНЯ ✦</Text>
                 </View>
                 <Text style={styles.energyTitle}>{energy.title}</Text>
                 <Text style={styles.quoteText} testID="energy-phrase">
@@ -927,117 +962,8 @@ export default function HomeScreen() {
             </View>
           </GlassCard>
 
-          {/* Dream interpretation */}
-          <GlassCard
-            borderColor={theme.colors.borderPurple}
-            style={styles.dreamCard}
-          >
-            <Image
-              source={DREAM_BG}
-              style={styles.dreamBgImage}
-              contentFit="cover"
-              contentPosition="left center"
-            />
-            <LinearGradient
-              colors={[
-                "rgba(24,22,40,0.94)",
-                "rgba(24,22,40,0.72)",
-                "rgba(24,22,40,0.38)",
-                "rgba(24,22,40,0.2)",
-              ]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              locations={[0, 0.28, 0.58, 1]}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.dreamInner}>
-              <View style={styles.dreamCopy}>
-                <View style={styles.eyebrowRow}>
-                  <Moon color={theme.colors.gold} size={15} strokeWidth={1.7} />
-                  <Text style={styles.eyebrow}>ЧТО ВАМ СЕГОДНЯ СНИЛОСЬ?</Text>
-                </View>
-                <GlassCard
-                  glow="purple"
-                  borderColor={theme.colors.borderPurple}
-                  intensity={18}
-                  surfaceColor="rgba(98,82,142,0.22)"
-                  overlayColor="rgba(116,95,168,0.18)"
-                  style={styles.dreamInputCard}
-                >
-                  <TextInput
-                    value={dreamText}
-                    onChangeText={(text) => {
-                      setDreamText(text);
-                      setDreamHintVisible(false);
-                    }}
-                    placeholder="Мне приснилось..."
-                    placeholderTextColor={theme.colors.textDim}
-                    multiline
-                    scrollEnabled
-                    textAlignVertical="top"
-                    style={styles.dreamInput}
-                    testID="dream-input"
-                    underlineColorAndroid="transparent"
-                  />
-                </GlassCard>
-                <View style={styles.dreamPromptRow}>
-                  {DREAM_PROMPTS.map((prompt) => (
-                    <Pressable
-                      key={prompt}
-                      onPress={() => handleDreamPrompt(prompt)}
-                      style={styles.dreamPromptPill}
-                      hitSlop={6}
-                    >
-                      <Text style={styles.dreamPromptText}>{prompt}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {dreamHintVisible && (
-                  <Text style={styles.dreamComingSoon}>
-                    Толкование снов скоро появится здесь.
-                  </Text>
-                )}
-              </View>
-              <Pressable
-                onPress={handleDreamInterpret}
-                disabled={!dreamReady}
-                style={[
-                  styles.ctaWrap,
-                  styles.dreamCtaWrap,
-                  !dreamReady && styles.dreamCtaInactive,
-                ]}
-                testID="dream-interpret-btn"
-              >
-                <LinearGradient
-                  colors={
-                    dreamReady
-                      ? theme.gradients.primaryCta
-                      : theme.gradients.primaryCtaMuted
-                  }
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[styles.ctaGradient, styles.dreamCtaWide]}
-                >
-                  <Text
-                    style={[
-                      styles.ctaText,
-                      !dreamReady && styles.dreamCtaTextInactive,
-                    ]}
-                  >
-                    Узнать значение
-                  </Text>
-                  <Sparkles
-                    color={dreamReady ? "#FFF7EA" : "#C9BED6"}
-                    size={14}
-                    strokeWidth={1.8}
-                  />
-                </LinearGradient>
-              </Pressable>
-            </View>
-          </GlassCard>
-
-          {/* Quick Rituals */}
-          <View style={styles.sectionHead}>
+                 {/* Quick Rituals */}
+                 <View style={styles.sectionHead}>
             <Text style={styles.sectionEyebrow}>РИТУАЛЫ НА СЕГОДНЯ</Text>
           
           </View>
@@ -1091,6 +1017,116 @@ export default function HomeScreen() {
               </View>
             </View>
           </GlassCard>
+
+          {/* Dream interpretation */}
+          <GlassCard
+            borderColor={theme.colors.borderPurple}
+            style={styles.dreamCard}
+          >
+            <Image
+              source={DREAM_BG}
+              style={styles.dreamBgImage}
+              contentFit="cover"
+              contentPosition="left center"
+            />
+            <LinearGradient
+              colors={[
+                "rgba(24,22,40,0.94)",
+                "rgba(24,22,40,0.72)",
+                "rgba(24,22,40,0.38)",
+                "rgba(24,22,40,0.2)",
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              locations={[0, 0.28, 0.58, 1]}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.dreamInner}>
+              <View style={styles.dreamCopy}>
+                <View style={styles.eyebrowRow}>
+                 
+                  <Text style={styles.eyebrow}>ЧТО ВАМ СЕГОДНЯ СНИЛОСЬ?</Text>
+                </View>
+                <GlassCard
+                  glow="purple"
+                  borderColor={theme.colors.borderPurple}
+                  intensity={18}
+                  surfaceColor="rgba(98,82,142,0.22)"
+                  overlayColor="rgba(116,95,168,0.18)"
+                  style={styles.dreamInputCard}
+                >
+                  <TextInput
+                    value={dreamText}
+                    onChangeText={(text) => {
+                      setDreamText(text);
+                      setDreamInterpretError(null);
+                    }}
+                    placeholder="Мне приснилось..."
+                    placeholderTextColor={theme.colors.textDim}
+                    multiline
+                    scrollEnabled
+                    textAlignVertical="top"
+                    maxLength={DREAM_TEXT_MAX_LENGTH}
+                    style={styles.dreamInput}
+                    testID="dream-input"
+                    underlineColorAndroid="transparent"
+                  />
+                </GlassCard>
+                <View style={styles.dreamPromptRow}>
+                  {DREAM_PROMPTS.map((prompt) => (
+                    <Pressable
+                      key={prompt}
+                      onPress={() => handleDreamPrompt(prompt)}
+                      style={styles.dreamPromptPill}
+                      hitSlop={6}
+                    >
+                      <Text style={styles.dreamPromptText}>{prompt}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {dreamInterpretError ? (
+                  <Text style={styles.dreamInterpretError}>{dreamInterpretError}</Text>
+                ) : null}
+              </View>
+              <Pressable
+                onPress={handleDreamInterpret}
+                disabled={!dreamReady}
+                style={[
+                  styles.ctaWrap,
+                  styles.dreamCtaWrap,
+                  !dreamReady && styles.dreamCtaInactive,
+                ]}
+                testID="dream-interpret-btn"
+              >
+                <LinearGradient
+                  colors={
+                    dreamReady
+                      ? theme.gradients.primaryCta
+                      : theme.gradients.primaryCtaMuted
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.ctaGradient, styles.dreamCtaWide]}
+                >
+                  <Text
+                    style={[
+                      styles.ctaText,
+                      !dreamReady && styles.dreamCtaTextInactive,
+                    ]}
+                  >
+                    Узнать значение
+                  </Text>
+                  <ArrowRight
+                    color={dreamReady ? "#FFF7EA" : "#C9BED6"}
+                    size={18}
+                    strokeWidth={1}
+                  />
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </GlassCard>
+
+   
 
           {/* Streak + Path */}
           <GlassCard
@@ -1160,16 +1196,37 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: { paddingHorizontal: 0, paddingTop: 0 },
 
-  contentWrap: { paddingHorizontal: 20 },
+  contentWrap: { paddingHorizontal: 20, marginTop: -36 },
 
   /* Top bar */
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     marginTop: 0,
     marginBottom: 10,
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
+  },
+  topBarSide: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  topBarSideLeft: {
+    justifyContent: "flex-start",
+  },
+  topBarSideRight: {
+    justifyContent: "flex-end",
+  },
+  topBarLogo: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  topBarLogoImage: {
+    height: 36,
+    width: "100%",
+    maxWidth: 160,
   },
   iconButton: {
     width: 44,
@@ -1197,31 +1254,30 @@ const styles = StyleSheet.create({
 
   /* Greeting */
   greetingBlock: {
-    paddingHorizontal: 20,
-    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 24,
+    // marginBottom: 14,
+    marginTop: 12,
+  },
+  greetingLine: {
+    flex: 1,
+    flexShrink: 1,
   },
   greetingSmall: {
     color: theme.colors.text,
     fontFamily: theme.fonts.heading,
-    fontSize: 26,
+    fontSize: 22,
     lineHeight: 30,
     letterSpacing: 0.2,
   },
-  greetingNameRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 10,
-    marginTop: 2,
-  },
   greetingName: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.display,
-    fontSize: 44,
-    lineHeight: 50,
-    letterSpacing: 0.3,
-  },
-  greetSparkle: {
-    paddingBottom: 12,
+    color: theme.colors.purple,
+    fontFamily: theme.fonts.headingItalic,
+    fontSize: 28,
+    lineHeight: 30,
+    letterSpacing: 0.2,
   },
   greetingSub: {
     color: theme.colors.text,
@@ -1235,15 +1291,15 @@ const styles = StyleSheet.create({
   /* Hero with background illustration */
   heroContainer: {
     width: "100%",
-    minHeight: 410,
+    minHeight: 270,
     paddingTop: 0,
-    paddingBottom: 20,
-    marginBottom: -40,
+    paddingBottom: 12,
+    marginBottom: -48,
     overflow: "hidden",
   },
   heroImage: {
     position: "absolute",
-    top: -90,
+    top: -210,
     left: 0,
     right: 0,
     bottom: -30,
@@ -1289,9 +1345,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     marginTop: 10,
+    marginBottom: 14,
   },
   ctaWrap: {
-    marginTop: 18,
+    marginTop: 4,
     borderRadius: 999,
     alignSelf: "flex-start",
     ...theme.shadows.ctaPrimary,
@@ -1348,13 +1405,14 @@ const styles = StyleSheet.create({
     color: "#FFF7EA",
     fontFamily: theme.fonts.bodySemi,
     fontSize: 14,
+    lineHeight: 17,
     letterSpacing: 0.4,
   },
 
   /* Tarot card slot (right) */
   bigCardArt: {
-    width: 118,
-    height: 160,
+    width: 134,
+    minHeight: 176,
     alignItems: "center",
     justifyContent: "center",
     overflow: "visible",
@@ -1421,7 +1479,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,215,154,0.35)",
   },
   cardRevealName: {
-    color: theme.colors.gold,
+    color: theme.colors.text,
     fontFamily: theme.fonts.display,
     fontSize: 22,
     lineHeight: 26,
@@ -1441,19 +1499,19 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.borderGold,
   },
   energyPillText: {
-    color: theme.colors.gold,
+    color: theme.colors.text,
     fontFamily: theme.fonts.bodySemi,
     fontSize: 9,
     letterSpacing: 1.6,
   },
   cardQuoteRow: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 0,
     paddingBottom: 20,
-    marginTop: -4,
+    marginTop: 4,
   },
   cardQuoteText: {
     flex: 1,
-    color: theme.colors.text,
+    color: theme.colors.textDim,
     fontFamily: theme.fonts.heading,
     fontSize: 16,
     lineHeight: 19,
@@ -1551,6 +1609,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
+  
   },
   dreamPromptRow: {
     flexDirection: "row",
@@ -1573,8 +1632,8 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.bodyMedium,
     fontSize: 12,
   },
-  dreamComingSoon: {
-    color: theme.colors.gold,
+  dreamInterpretError: {
+    color: "#F4B2C0",
     fontFamily: theme.fonts.bodyMedium,
     fontSize: 12,
     lineHeight: 17,
