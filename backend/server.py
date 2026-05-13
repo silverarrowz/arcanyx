@@ -3,7 +3,7 @@ from fastapi.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pathlib import Path
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from typing import List, Optional, Dict, Tuple, Any
 import os
 import json
@@ -12,6 +12,8 @@ import hashlib
 import random
 import time
 import requests
+
+import fal_client
 
 
 ROOT_DIR = Path(__file__).parent
@@ -65,6 +67,63 @@ class DreamInterpretResponse(BaseModel):
     advice: str
     provider: str = "mistral"
     fallback: bool = False
+
+
+DEFAULT_FAL_IMAGE_MODEL = "fal-ai/flux-1/schnell"
+
+DREAM_ILLUSTRATION_SUPPORTED_IMAGE_SIZES: List[str] = [
+    "square_hd",
+    "square",
+    "portrait_4_3",
+    "portrait_16_9",
+    "landscape_4_3",
+    "landscape_16_9",
+]
+
+MAX_DREAM_ILLUSTRATION_NUM_IMAGES = 2
+
+
+class DreamIllustrationRequest(BaseModel):
+    dream_text: str = Field(min_length=1, max_length=1500)
+    title: Optional[str] = None
+    symbols: Optional[List[str]] = None
+    image_size: str = "square_hd"
+    num_images: int = Field(default=1, ge=1, le=2)
+    seed: Optional[int] = None
+    output_format: str = "png"
+
+    @model_validator(mode="after")
+    def validate_illustration_options(self) -> "DreamIllustrationRequest":
+        if self.image_size not in DREAM_ILLUSTRATION_SUPPORTED_IMAGE_SIZES:
+            raise ValueError(
+                "image_size must be one of: "
+                + ", ".join(DREAM_ILLUSTRATION_SUPPORTED_IMAGE_SIZES)
+            )
+        if self.output_format not in ("jpeg", "png"):
+            raise ValueError("output_format must be 'jpeg' or 'png'")
+        return self
+
+
+class DreamIllustrationImage(BaseModel):
+    url: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    content_type: Optional[str] = None
+
+
+class DreamIllustrationResponse(BaseModel):
+    images: List[DreamIllustrationImage]
+    provider: str = "fal"
+    model: str
+    seed: Optional[int] = None
+    has_nsfw_concepts: Optional[List[bool]] = None
+
+
+class DreamIllustrationConfigResponse(BaseModel):
+    model: str
+    supported_image_sizes: List[str]
+    max_num_images: int
+    provider: str
 
 
 def build_fallback_response() -> DreamInterpretResponse:
@@ -430,6 +489,196 @@ def mistral_interpret_dream_sync(payload: DreamInterpretRequest) -> DreamInterpr
     return interpreted
 
 
+def build_dream_illustration_prompt(payload: DreamIllustrationRequest) -> str:
+    dream_text = payload.dream_text.strip()
+    title = payload.title.strip() if payload.title else ""
+    symbols = payload.symbols or []
+
+    cleaned_symbols: List[str] = []
+    for s in symbols:
+        normalized = str(s).strip() if s is not None else ""
+        if normalized:
+            cleaned_symbols.append(normalized)
+
+    parts: List[str] = []
+
+    if title:
+        parts.append(f"Title:\n{title}")
+
+    if cleaned_symbols:
+        parts.append("Symbols:\n" + ", ".join(cleaned_symbols))
+
+    parts.append(f"Dream text:\n{dream_text}")
+
+    visual = (
+        "Visual direction:\n"
+        "Create a symbolic dream illustration for a mystical mobile app.\n"
+        "Use the dream text as inspiration, but do not illustrate it too literally.\n"
+        "Focus on atmosphere, symbolic objects, emotional tone, and visual metaphor.\n"
+        "The image should feel poetic, soft, surreal, and psychologically meaningful.\n"
+        "Avoid horror, gore, violence, sexual content, realistic fear, or disturbing imagery.\n"
+        "Blender-style 3D illustration.\n"
+        "Soft cinematic lighting.\n"
+        "Dark ethereal palette with deep violet, muted lavender, soft moonlight, "
+        "and subtle golden accents.\n"
+        "Calm mist, dreamlike depth, elegant negative space, premium modern app aesthetic.\n"
+        "No text, no letters, no watermark, no UI elements."
+    )
+    parts.append(visual)
+
+    return "\n\n".join(parts)
+
+
+def build_fal_flux_illustration_arguments(
+    payload: DreamIllustrationRequest,
+    final_prompt: str,
+) -> Dict[str, Any]:
+    """
+    Input map for FLUX schnell-style fal image models.
+    Tweak keys here when switching to a model with a different schema.
+    """
+    args: Dict[str, Any] = {
+        "prompt": final_prompt,
+        "image_size": payload.image_size,
+        "num_images": payload.num_images,
+        "output_format": payload.output_format,
+        "enable_safety_checker": True,
+    }
+    if payload.seed is not None:
+        args["seed"] = payload.seed
+    return args
+
+
+def _fal_result_for_error_log(result: Any) -> Any:
+    """Avoid echoing provider prompt (may contain personal dream text) into logs."""
+    if not isinstance(result, dict):
+        return result
+    redacted = dict(result)
+    prompt_val = redacted.get("prompt")
+    if isinstance(prompt_val, str):
+        redacted["prompt"] = f"[omitted, length={len(prompt_val)}]"
+    return redacted
+
+
+def parse_fal_illustration_response(result: Any, model: str) -> DreamIllustrationResponse:
+    if not isinstance(result, dict):
+        logger.error(
+            "fal.ai returned non-dict result | type=%s",
+            type(result).__name__,
+        )
+        raise ValueError("fal.ai returned unexpected response shape")
+
+    images_raw = result.get("images")
+    if not images_raw:
+        logger.error(
+            "fal.ai returned no images | result=%s",
+            json.dumps(_fal_result_for_error_log(result), ensure_ascii=False, default=str)[:8000],
+        )
+        raise ValueError("fal.ai returned no images")
+
+    if not isinstance(images_raw, list):
+        logger.error(
+            "fal.ai images field is not a list | result=%s",
+            json.dumps(_fal_result_for_error_log(result), ensure_ascii=False, default=str)[:8000],
+        )
+        raise ValueError("fal.ai returned no images")
+
+    images: List[DreamIllustrationImage] = []
+    for item in images_raw:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        if not url or not isinstance(url, str):
+            continue
+        w = item.get("width")
+        h = item.get("height")
+        ct = item.get("content_type")
+        images.append(
+            DreamIllustrationImage(
+                url=url,
+                width=w if isinstance(w, int) else None,
+                height=h if isinstance(h, int) else None,
+                content_type=ct if isinstance(ct, str) else None,
+            )
+        )
+
+    if not images:
+        logger.error(
+            "fal.ai returned no usable image URLs | result=%s",
+            json.dumps(_fal_result_for_error_log(result), ensure_ascii=False, default=str)[:8000],
+        )
+        raise ValueError("fal.ai returned no images")
+
+    raw_seed = result.get("seed")
+    seed: Optional[int] = None
+    if isinstance(raw_seed, int):
+        seed = raw_seed
+    elif raw_seed is not None:
+        try:
+            seed = int(raw_seed)
+        except (TypeError, ValueError):
+            seed = None
+
+    raw_nsfw = result.get("has_nsfw_concepts")
+    has_nsfw_concepts: Optional[List[bool]] = None
+    if isinstance(raw_nsfw, list):
+        parsed_flags: List[bool] = []
+        for x in raw_nsfw:
+            if isinstance(x, bool):
+                parsed_flags.append(x)
+            elif x in (0, 1):
+                parsed_flags.append(bool(x))
+        has_nsfw_concepts = parsed_flags
+
+    return DreamIllustrationResponse(
+        images=images,
+        provider="fal",
+        model=model,
+        seed=seed,
+        has_nsfw_concepts=has_nsfw_concepts,
+    )
+
+
+def generate_dream_illustration_sync(payload: DreamIllustrationRequest) -> DreamIllustrationResponse:
+    fal_key = os.getenv("FAL_KEY")
+    if not fal_key:
+        raise HTTPException(status_code=500, detail="FAL_KEY is not configured")
+
+    model = os.getenv("FAL_IMAGE_MODEL") or DEFAULT_FAL_IMAGE_MODEL
+    final_prompt = build_dream_illustration_prompt(payload)
+
+    logger.info(
+        "Dream illustration request | model=%s | image_size=%s | num_images=%s | prompt_chars=%s",
+        model,
+        payload.image_size,
+        payload.num_images,
+        len(final_prompt),
+    )
+
+    arguments = build_fal_flux_illustration_arguments(payload, final_prompt)
+
+    try:
+        result = fal_client.subscribe(
+            model,
+            arguments=arguments,
+            with_logs=True,
+        )
+    except Exception as exc:
+        logger.exception("fal.ai dream illustration subscribe failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Dream illustration generation failed",
+        ) from exc
+
+    try:
+        return parse_fal_illustration_response(result, model)
+    except ValueError:
+        raise HTTPException(
+            status_code=502,
+            detail="Dream illustration generation failed",
+        ) from None
+
+
 @api_router.get("/")
 async def root():
     return {"message": "API is running"}
@@ -480,6 +729,31 @@ async def interpret_dream(input: DreamInterpretRequest):
             )
 
         return build_fallback_response()
+
+
+@api_router.post("/dreams/illustrate", response_model=DreamIllustrationResponse)
+async def illustrate_dream(input: DreamIllustrationRequest):
+    try:
+        return await run_in_threadpool(generate_dream_illustration_sync, input)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Dream illustration route error: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Dream illustration generation failed",
+        ) from exc
+
+
+@api_router.get("/dreams/illustrate/config", response_model=DreamIllustrationConfigResponse)
+async def dream_illustration_config():
+    model = os.getenv("FAL_IMAGE_MODEL") or DEFAULT_FAL_IMAGE_MODEL
+    return DreamIllustrationConfigResponse(
+        model=model,
+        supported_image_sizes=list(DREAM_ILLUSTRATION_SUPPORTED_IMAGE_SIZES),
+        max_num_images=MAX_DREAM_ILLUSTRATION_NUM_IMAGES,
+        provider="fal",
+    )
 
 
 app.include_router(api_router)

@@ -1201,7 +1201,7 @@ const styles = StyleSheet.create({
   /* Top bar */
   topBar: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     marginTop: 0,
     marginBottom: 10,
     paddingHorizontal: 12,
