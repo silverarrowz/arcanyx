@@ -663,12 +663,20 @@ def generate_dream_illustration_sync(payload: DreamIllustrationRequest) -> Dream
             arguments=arguments,
             with_logs=True,
         )
-    except Exception as exc:
-        logger.exception("fal.ai dream illustration subscribe failed: %s", exc)
-        raise HTTPException(
-            status_code=502,
-            detail="Dream illustration generation failed",
-        ) from exc
+  except Exception as exc:
+    error_type = type(exc).__name__
+    error_message = str(exc)
+
+    logger.exception("Dream illustration generation failed: %s", exc)
+
+    raise HTTPException(
+        status_code=502,
+        detail={
+            "message": "Dream illustration generation failed",
+            "error_type": error_type,
+            "error_message": error_message[:500],
+        },
+    )
 
     try:
         return parse_fal_illustration_response(result, model)
