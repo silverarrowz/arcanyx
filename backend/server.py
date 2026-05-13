@@ -542,26 +542,6 @@ def build_dream_illustration_prompt(payload: DreamIllustrationRequest) -> str:
     return "\n\n".join(parts)
 
 
-def build_fal_flux_illustration_arguments(
-    payload: DreamIllustrationRequest,
-    final_prompt: str,
-) -> Dict[str, Any]:
-    """
-    Input map for FLUX schnell-style fal image models.
-    Tweak keys here when switching to a model with a different schema.
-    """
-    args: Dict[str, Any] = {
-        "prompt": final_prompt,
-        "image_size": payload.image_size,
-        "num_images": payload.num_images,
-        "output_format": payload.output_format,
-        "enable_safety_checker": True,
-    }
-    if payload.seed is not None:
-        args["seed"] = payload.seed
-    return args
-
-
 def _fal_result_for_error_log(result: Any) -> Any:
     """Avoid echoing provider prompt (may contain personal dream text) into logs."""
     if not isinstance(result, dict):
@@ -579,7 +559,9 @@ def parse_fal_illustration_response(result: Any, model: str) -> DreamIllustratio
             "fal.ai returned non-dict result | type=%s",
             type(result).__name__,
         )
-        raise ValueError("fal.ai returned unexpected response shape")
+        raise ValueError(
+            f"fal.ai returned unexpected result type: {type(result).__name__}"
+        )
 
     images_raw = result.get("images")
     if not images_raw:
@@ -662,15 +644,24 @@ def generate_dream_illustration_sync(payload: DreamIllustrationRequest) -> Dream
     model = os.getenv("FAL_IMAGE_MODEL") or DEFAULT_FAL_IMAGE_MODEL
     final_prompt = build_dream_illustration_prompt(payload)
 
+    arguments: Dict[str, Any] = {
+        "prompt": final_prompt,
+        "image_size": payload.image_size,
+        "num_images": payload.num_images,
+        "output_format": payload.output_format,
+        "enable_safety_checker": True,
+    }
+    if payload.seed is not None:
+        arguments["seed"] = payload.seed
+
     logger.info(
-        "Dream illustration request | model=%s | image_size=%s | num_images=%s | prompt_chars=%s",
+        "Calling fal.ai | model=%s | image_size=%s | num_images=%s | output_format=%s | prompt_length=%s",
         model,
         payload.image_size,
         payload.num_images,
+        payload.output_format,
         len(final_prompt),
     )
-
-    arguments = build_fal_flux_illustration_arguments(payload, final_prompt)
 
     try:
         result = fal_client.subscribe(
@@ -680,18 +671,12 @@ def generate_dream_illustration_sync(payload: DreamIllustrationRequest) -> Dream
         )
     except Exception as exc:
         logger.exception("fal.ai dream illustration subscribe failed: %s", exc)
-        raise HTTPException(
-            status_code=502,
-            detail="Dream illustration generation failed",
-        ) from exc
+        raise RuntimeError(str(exc)) from exc
 
     try:
         return parse_fal_illustration_response(result, model)
-    except ValueError:
-        raise HTTPException(
-            status_code=502,
-            detail="Dream illustration generation failed",
-        ) from None
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 @api_router.get("/")
@@ -753,10 +738,15 @@ async def illustrate_dream(input: DreamIllustrationRequest):
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Dream illustration route error: %s", exc)
+        # TEMPORARY: sanitized debug in response; remove after fixing fal integration.
+        logger.exception("Dream illustration generation failed: %s", exc)
         raise HTTPException(
             status_code=502,
-            detail="Dream illustration generation failed",
+            detail={
+                "message": "Dream illustration generation failed",
+                "error_type": type(exc).__name__,
+                "error_message": str(exc)[:1000],
+            },
         ) from exc
 
 
