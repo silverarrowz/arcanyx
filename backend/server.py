@@ -13,8 +13,6 @@ import random
 import time
 import requests
 
-import fal_client
-
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -120,10 +118,25 @@ class DreamIllustrationResponse(BaseModel):
 
 
 class DreamIllustrationConfigResponse(BaseModel):
+    provider: str
     model: str
+    has_fal_key: bool
+    fal_key_length: int
     supported_image_sizes: List[str]
     max_num_images: int
-    provider: str
+
+
+def get_fal_client():
+    try:
+        import fal_client
+
+        return fal_client
+    except ImportError as exc:
+        logger.exception("fal-client is not installed")
+        raise HTTPException(
+            status_code=500,
+            detail="fal-client is not installed on the server",
+        ) from exc
 
 
 def build_fallback_response() -> DreamInterpretResponse:
@@ -644,6 +657,8 @@ def generate_dream_illustration_sync(payload: DreamIllustrationRequest) -> Dream
     if not fal_key:
         raise HTTPException(status_code=500, detail="FAL_KEY is not configured")
 
+    fal_client = get_fal_client()
+
     model = os.getenv("FAL_IMAGE_MODEL") or DEFAULT_FAL_IMAGE_MODEL
     final_prompt = build_dream_illustration_prompt(payload)
 
@@ -663,20 +678,12 @@ def generate_dream_illustration_sync(payload: DreamIllustrationRequest) -> Dream
             arguments=arguments,
             with_logs=True,
         )
-  except Exception as exc:
-    error_type = type(exc).__name__
-    error_message = str(exc)
-
-    logger.exception("Dream illustration generation failed: %s", exc)
-
-    raise HTTPException(
-        status_code=502,
-        detail={
-            "message": "Dream illustration generation failed",
-            "error_type": error_type,
-            "error_message": error_message[:500],
-        },
-    )
+    except Exception as exc:
+        logger.exception("fal.ai dream illustration subscribe failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Dream illustration generation failed",
+        ) from exc
 
     try:
         return parse_fal_illustration_response(result, model)
@@ -755,12 +762,15 @@ async def illustrate_dream(input: DreamIllustrationRequest):
 
 @api_router.get("/dreams/illustrate/config", response_model=DreamIllustrationConfigResponse)
 async def dream_illustration_config():
+    fal_key = os.getenv("FAL_KEY") or ""
     model = os.getenv("FAL_IMAGE_MODEL") or DEFAULT_FAL_IMAGE_MODEL
     return DreamIllustrationConfigResponse(
+        provider="fal",
         model=model,
+        has_fal_key=bool(fal_key),
+        fal_key_length=len(fal_key),
         supported_image_sizes=list(DREAM_ILLUSTRATION_SUPPORTED_IMAGE_SIZES),
         max_num_images=MAX_DREAM_ILLUSTRATION_NUM_IMAGES,
-        provider="fal",
     )
 
 
