@@ -17,6 +17,8 @@ export type DailyCardData = {
   /** Local-day key in YYYY-MM-DD form. */
   date: string;
   cardId: string;
+  /** Rider–Waite reversal. Absent on older saves = upright. */
+  reversed?: boolean;
   intention?: string;
   /** ISO timestamp of when card was drawn — used for journal/share UX. */
   drawnAt: string;
@@ -53,11 +55,16 @@ function resolveCard(cardId: string | undefined | null): TarotCard | null {
 type DailyCardContextValue = {
   refresh: () => Promise<void>;
   card: TarotCard | null;
+  reversed: boolean;
   intention: string | undefined;
   loading: boolean;
   error: string | null;
   hasDrawn: boolean;
-  saveCard: (cardId: string, intention?: string) => Promise<DailyCardData>;
+  saveCard: (
+    cardId: string,
+    intention?: string,
+    reversed?: boolean,
+  ) => Promise<DailyCardData>;
   clearDailyCard: () => Promise<void>;
 };
 
@@ -127,7 +134,11 @@ export function DailyCardProvider({ children }: { children: ReactNode }) {
   }, [applyStoredState]);
 
   const saveCard = useCallback(
-    async (cardId: string, intention?: string): Promise<DailyCardData> => {
+    async (
+      cardId: string,
+      intention?: string,
+      reversed?: boolean,
+    ): Promise<DailyCardData> => {
       if (data && isEntryValidForLocalToday(data)) {
         return data;
       }
@@ -135,6 +146,7 @@ export function DailyCardProvider({ children }: { children: ReactNode }) {
       const payload: DailyCardData = {
         date: todayKey(),
         cardId,
+        reversed: reversed === true,
         intention: intention?.trim() ? intention.trim() : undefined,
         drawnAt: new Date().toISOString(),
       };
@@ -167,6 +179,7 @@ export function DailyCardProvider({ children }: { children: ReactNode }) {
     () => ({
       refresh: applyStoredState,
       card,
+      reversed: data?.reversed === true,
       intention: data?.intention,
       loading,
       error,

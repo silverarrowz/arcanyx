@@ -12,7 +12,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -39,20 +38,30 @@ import {
   BookOpenCheck,
   ChevronDown,
   ChevronUp,
-  Quote,
   Share2,
   Sparkles as SparklesIcon,
   X,
 } from "lucide-react-native";
 import { theme } from "../src/theme";
 import CosmicBackground from "../src/components/CosmicBackground";
-import GlassCard from "../src/components/GlassCard";
 import TarotCard from "../src/components/TarotCard";
 import Sparkles from "../src/components/Sparkles";
 import { TAROT_DECK, TarotCard as TarotCardType } from "../src/data/tarotCards";
+import {
+  OrientedTarotCard,
+  cardDetailed,
+  cardShort,
+  cardTitleRu,
+  withOrientation,
+} from "../src/data/tarotOrientation";
 import { getCardReading } from "../src/data/tarotReadings";
-import { useDailyCard } from "../src/hooks/useDailyCard";
+import { todayKey, useDailyCard } from "../src/hooks/useDailyCard";
 import { useHistory } from "../src/context/HistoryContext";
+import ShareCardPoster, {
+  SHARE_POSTER_H,
+  SHARE_POSTER_W,
+} from "../src/components/ShareCardPoster";
+import { shareViewAsImage } from "../src/services/sharePoster";
 
 type Phase = "choosing" | "revealing" | "result" | "loading" | "error";
 
@@ -63,12 +72,12 @@ const CARD_H = 168;
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function pickThree(deck: TarotCardType[], excludeId?: string): TarotCardType[] {
+function pickThree(deck: TarotCardType[], excludeId?: string): OrientedTarotCard[] {
   const pool = excludeId ? deck.filter((c) => c.id !== excludeId) : deck.slice();
-  const out: TarotCardType[] = [];
+  const out: OrientedTarotCard[] = [];
   while (out.length < 3 && pool.length > 0) {
     const idx = Math.floor(Math.random() * pool.length);
-    out.push(pool.splice(idx, 1)[0]);
+    out.push(withOrientation(pool.splice(idx, 1)[0]));
   }
   return out;
 }
@@ -82,13 +91,14 @@ export default function DrawCardScreen() {
   const insets = useSafeAreaInsets();
   const {
     card: storedCard,
+    reversed: storedReversed,
     hasDrawn,
     loading,
     error,
     saveCard,
     refresh: refreshDailyCard,
   } = useDailyCard();
-  const { addItem } = useHistory();
+  const { addItem, items } = useHistory();
 
   useFocusEffect(
     useCallback(() => {
@@ -106,6 +116,9 @@ export default function DrawCardScreen() {
   const [readMore, setReadMore] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const sharePosterRef = useRef<View>(null);
+  const shareImageReadyRef = useRef(false);
 
   // Reduced-motion detection (subscribes for live changes)
   useEffect(() => {
@@ -143,7 +156,25 @@ export default function DrawCardScreen() {
   // The card finally shown on the result screen
   const finalCard: TarotCardType | null =
     storedCard ?? (selectedIdx !== null ? threeCards[selectedIdx] : null);
-  const reading = finalCard ? getCardReading(finalCard) : null;
+  const finalReversed =
+    storedCard != null
+      ? storedReversed
+      : selectedIdx !== null
+        ? threeCards[selectedIdx].reversed
+        : false;
+  const reading = finalCard ? getCardReading(finalCard, finalReversed) : null;
+
+  const savedToDiary = useMemo(() => {
+    if (!finalCard) return false;
+    const today = todayKey();
+    return items.some((item) => {
+      if (item.type !== "tarot" || item.question !== "Карта дня") return false;
+      if (item.cardId && item.cardId !== finalCard.id) return false;
+      const itemDate = new Date(item.date);
+      if (Number.isNaN(itemDate.getTime())) return false;
+      return todayKey(itemDate) === today;
+    });
+  }, [items, finalCard]);
 
   const handleClose = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -161,15 +192,7 @@ export default function DrawCardScreen() {
       const chosen = threeCards[idx];
       // Persist as today's official card (idempotent on the same day).
       try {
-        await saveCard(chosen.id, intention.trim() || undefined);
-        addItem({
-          type: "tarot",
-          question: "Карта дня",
-          answer: `${chosen.nameRu} — ${chosen.short}`,
-          cardId: chosen.id,
-          cardName: chosen.nameRu,
-          intent: intention.trim() || undefined,
-        });
+        await saveCard(chosen.id, intention.trim() || undefined, chosen.reversed);
       } catch {
         // useDailyCard sets its own error state; the result phase still works
         // because finalCard falls back to selected index.
@@ -184,32 +207,65 @@ export default function DrawCardScreen() {
         );
       }, revealMs);
     },
-    [phase, threeCards, intention, saveCard, addItem, reduceMotion],
+    [phase, threeCards, intention, saveCard, reduceMotion],
   );
 
   const handleSaveBack = useCallback(() => {
+    if (savedFeedback || savedToDiary) {
+      handleClose();
+      return;
+    }
+    if (!finalCard) return;
+    addItem({
+      type: "tarot",
+      question: "Карта дня",
+      answer: `${cardTitleRu(finalCard, finalReversed)} — ${cardShort(finalCard, finalReversed)}`,
+      cardId: finalCard.id,
+      cardName: cardTitleRu(finalCard, finalReversed),
+      cardReversed: finalReversed,
+      intent: intention.trim() || undefined,
+    });
     setSavedFeedback(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
       () => {},
     );
-    setTimeout(handleClose, 450);
-  }, [handleClose]);
+  }, [savedFeedback, savedToDiary, finalCard, finalReversed, addItem, intention, handleClose]);
 
   const handleShare = useCallback(async () => {
-    if (!finalCard || !reading) return;
+    if (!finalCard || !reading || sharing) return;
+    const fallback = `Моя карта дня: ${cardTitleRu(finalCard, finalReversed)}\n«${reading.quote}»`;
+    setSharing(true);
     try {
-      await Share.share({
-        message: `🔮 Моя карта дня: ${finalCard.nameRu}\n«${reading.quote}»\n\n${finalCard.short}`,
-      });
+      await shareViewAsImage(
+        sharePosterRef,
+        fallback,
+        () => shareImageReadyRef.current,
+      );
     } catch {
-      // ignore
+      // ignore cancel
+    } finally {
+      setSharing(false);
     }
-  }, [finalCard, reading]);
+  }, [finalCard, finalReversed, reading, sharing]);
 
   /* ---------- Render branches ---------- */
 
   return (
     <View style={styles.root}>
+      {phase === "result" && finalCard && reading ? (
+        <View style={styles.shareOffscreen} pointerEvents="none">
+          <ShareCardPoster
+            key={`${finalCard.id}:${finalReversed ? "r" : "u"}`}
+            ref={sharePosterRef}
+            card={finalCard}
+            reversed={finalReversed}
+            quote={reading.quote}
+            onImageReady={() => {
+              shareImageReadyRef.current = true;
+            }}
+          />
+        </View>
+      ) : null}
       <CosmicBackground />
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         {/* Header */}
@@ -262,15 +318,16 @@ export default function DrawCardScreen() {
             {phase === "result" && finalCard && reading && (
               <ResultBlock
                 card={finalCard}
+                reversed={finalReversed}
                 reading={reading}
                 intention={intention || ""}
                 readMore={readMore}
                 onToggleReadMore={() => setReadMore((v) => !v)}
                 onSave={handleSaveBack}
                 onShare={handleShare}
-                saved={savedFeedback}
+                sharing={sharing}
+                saved={savedFeedback || savedToDiary}
                 reduceMotion={reduceMotion}
-                cameFromExistingDraw={hasDrawn && !!storedCard && selectedIdx === null}
               />
             )}
           </ScrollView>
@@ -285,7 +342,7 @@ export default function DrawCardScreen() {
 /* ------------------------------------------------------------------ */
 
 type ChooseProps = {
-  threeCards: TarotCardType[];
+  threeCards: OrientedTarotCard[];
   phase: Phase;
   selectedIdx: number | null;
   onSelect: (idx: number) => void;
@@ -311,9 +368,9 @@ function ChooseBlock({
     <View style={styles.chooseWrap}>
       <Animated.View entering={FadeInDown.delay(50).duration(500)}>
         <Text style={styles.eyebrow}>ТАРО ДНЯ</Text>
-        <Text style={styles.titleDisplay}>Выбери{"\n"}свою карту</Text>
+        <Text style={styles.titleDisplay}>Выберите{"\n"}свою карту</Text>
         <Text style={styles.subtitle}>
-          Сделай вдох. Прикоснись к той, что зовёт.
+          Сделайте вдох. Прикоснитесь к той, что зовёт.
         </Text>
       </Animated.View>
 
@@ -349,7 +406,7 @@ function ChooseBlock({
             <TextInput
               value={intention}
               onChangeText={onChangeIntention}
-              placeholder="Какого совета ты ищешь сегодня?"
+              placeholder="Какого совета вы ищете сегодня?"
               placeholderTextColor={theme.colors.textDim}
               style={styles.intentInput}
               maxLength={120}
@@ -383,7 +440,7 @@ function ChooseBlock({
           entering={FadeIn.delay(400).duration(500)}
           style={styles.hint}
         >
-          Прикоснись пальцем к одной из карт
+          Прикоснитесь пальцем к одной из карт
         </Animated.Text>
       )}
     </View>
@@ -395,7 +452,7 @@ function ChooseBlock({
 /* ------------------------------------------------------------------ */
 
 type ChoiceProps = {
-  card: TarotCardType;
+  card: OrientedTarotCard;
   index: number;
   selected: boolean;
   selectedIdx: number | null;
@@ -508,6 +565,7 @@ function ChoiceCard({
 
       <TarotCard
         card={card}
+        reversed={card.reversed}
         flipped={doFlip}
         onFlip={tappable ? onPress : undefined}
         width={CARD_W}
@@ -536,28 +594,30 @@ function ChoiceCard({
 
 type ResultProps = {
   card: TarotCardType;
+  reversed?: boolean;
   reading: ReturnType<typeof getCardReading>;
   intention: string;
   readMore: boolean;
   onToggleReadMore: () => void;
   onSave: () => void;
   onShare: () => void;
+  sharing: boolean;
   saved: boolean;
   reduceMotion: boolean;
-  cameFromExistingDraw: boolean;
 };
 
 function ResultBlock({
   card,
+  reversed = false,
   reading,
   intention,
   readMore,
   onToggleReadMore,
   onSave,
   onShare,
+  sharing,
   saved,
   reduceMotion,
-  cameFromExistingDraw,
 }: ResultProps) {
   const fadeDelay = reduceMotion ? 0 : 220;
 
@@ -574,6 +634,7 @@ function ResultBlock({
         />
         <TarotCard
           card={card}
+          reversed={reversed}
           flipped
           width={200}
           height={300}
@@ -582,54 +643,30 @@ function ResultBlock({
       </View>
 
       <Animated.View entering={FadeIn.delay(fadeDelay).duration(550)}>
-        <Text style={styles.resultEyebrow}>ТВОЯ КАРТА НА СЕГОДНЯ</Text>
+        <Text style={styles.resultEyebrow}>ВАША КАРТА НА СЕГОДНЯ</Text>
         <Text style={styles.resultName} testID="result-card-name">
           {card.nameRu}
         </Text>
+        {reversed ? (
+          <Text style={styles.reversedBadge}>Перевёрнутая</Text>
+        ) : null}
 
         <View style={styles.energyPill}>
           <SparklesIcon color={theme.colors.gold} size={12} strokeWidth={1.8} />
           <Text style={styles.energyText}>{reading.energy.toUpperCase()}</Text>
         </View>
 
-        <Text style={styles.shortMeaning}>{card.short}</Text>
+        <Text style={styles.mantra}>{reading.quote}</Text>
       </Animated.View>
 
-      <Animated.View
-        entering={FadeIn.delay(fadeDelay + 80).duration(550)}
-        style={styles.adviceRow}
-      >
-        <Quote
-          color={theme.colors.gold}
-          size={16}
-          strokeWidth={1.8}
-          style={{ marginTop: 3 }}
-        />
-        <Text style={styles.adviceText}>{reading.advice}</Text>
-      </Animated.View>
-
-      {/* Reflection card */}
-      <Animated.View entering={FadeIn.delay(fadeDelay + 160).duration(550)}>
-        <GlassCard
-          borderColor={theme.colors.borderPurple}
-          style={styles.reflectionCard}
-        >
-          <View style={styles.reflectionInner}>
-            <Text style={styles.reflectionLabel}>ВОПРОС ДЛЯ РАЗМЫШЛЕНИЯ</Text>
-            <Text style={styles.reflectionText}>{reading.reflection}</Text>
-          </View>
-        </GlassCard>
-      </Animated.View>
-
-      {/* Read more (full meaning) */}
-      <Animated.View entering={FadeIn.delay(fadeDelay + 240).duration(550)}>
+      <Animated.View entering={FadeIn.delay(fadeDelay + 80).duration(550)}>
         <Pressable
           onPress={onToggleReadMore}
           style={styles.readMoreBtn}
           testID="read-more-btn"
         >
           <Text style={styles.readMoreText}>
-            {readMore ? "Свернуть" : "Открыть полное значение"}
+            {readMore ? "Свернуть" : "Подробнее"}
           </Text>
           {readMore ? (
             <ChevronUp color={theme.colors.gold} size={14} />
@@ -640,27 +677,26 @@ function ResultBlock({
         {readMore && (
           <Animated.View
             entering={FadeIn.duration(280)}
-            style={styles.detailedBox}
+            style={styles.detailsPanel}
           >
-            <Text style={styles.detailedText}>{card.detailed}</Text>
+            <Text style={styles.reflectionPrompt}>{reading.reflection}</Text>
+            <Text style={styles.detailedText}>{cardDetailed(card, reversed)}</Text>
           </Animated.View>
         )}
       </Animated.View>
 
-      {/* Optional intention echo */}
       {!!intention && (
         <Animated.View
-          entering={FadeIn.delay(fadeDelay + 280).duration(500)}
+          entering={FadeIn.delay(fadeDelay + 160).duration(500)}
           style={styles.intentionEcho}
         >
-          <Text style={styles.intentionEchoLabel}>ТВОЁ НАМЕРЕНИЕ</Text>
           <Text style={styles.intentionEchoText}>«{intention}»</Text>
         </Animated.View>
       )}
 
       {/* Actions */}
       <Animated.View
-        entering={FadeIn.delay(fadeDelay + 320).duration(550)}
+        entering={FadeIn.delay(fadeDelay + 200).duration(550)}
         style={styles.actionsRow}
       >
         <Pressable
@@ -676,17 +712,22 @@ function ResultBlock({
           >
             <BookOpenCheck color="#FFF7EA" size={16} strokeWidth={1.8} />
             <Text style={styles.primaryBtnText}>
-              {cameFromExistingDraw ? "Готово" : saved ? "Сохранено ✓" : "В дневник"}
+              {saved ? "Готово" : "В дневник"}
             </Text>
           </LinearGradient>
         </Pressable>
 
         <Pressable
           onPress={onShare}
+          disabled={sharing}
           style={styles.ghostBtn}
           testID="share-btn"
         >
-          <Share2 color={theme.colors.text} size={16} strokeWidth={1.8} />
+          {sharing ? (
+            <ActivityIndicator color={theme.colors.text} size="small" />
+          ) : (
+            <Share2 color={theme.colors.text} size={16} strokeWidth={1.8} />
+          )}
           <Text style={styles.ghostBtnText}>Поделиться</Text>
         </Pressable>
       </Animated.View>
@@ -711,7 +752,7 @@ function ErrorBlock({
     <View style={styles.center}>
       <Text style={styles.errorTitle}>Что-то пошло не так</Text>
       <Text style={styles.errorMsg}>
-        {message ?? "Не удалось открыть карту дня. Попробуй ещё раз."}
+        {message ?? "Не удалось открыть карту дня. Попробуйте ещё раз."}
       </Text>
       <Pressable style={styles.retryBtn} onPress={onRetry}>
         <Text style={styles.retryBtnText}>Попробовать снова</Text>
@@ -725,8 +766,15 @@ function ErrorBlock({
 /* ------------------------------------------------------------------ */
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.colors.bg },
+  root: { flex: 1, backgroundColor: theme.colors.bg, overflow: "visible" },
   safe: { flex: 1 },
+  shareOffscreen: {
+    position: "absolute",
+    top: 0,
+    left: -(SHARE_POSTER_W + 24),
+    width: SHARE_POSTER_W,
+    height: SHARE_POSTER_H,
+  },
 
   header: {
     flexDirection: "row",
@@ -768,7 +816,7 @@ const styles = StyleSheet.create({
   /* ---------- Choose phase ---------- */
   chooseWrap: { flex: 1 },
   eyebrow: {
-    color: theme.colors.gold,
+    color: theme.colors.archive.label,
     fontFamily: theme.fonts.bodySemi,
     fontSize: 10.5,
     letterSpacing: 2.4,
@@ -907,7 +955,7 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
   resultEyebrow: {
-    color: theme.colors.gold,
+    color: theme.colors.archive.label,
     fontFamily: theme.fonts.bodySemi,
     fontSize: 10.5,
     letterSpacing: 2.6,
@@ -916,12 +964,23 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   resultName: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.display,
+    color: theme.colors.archive.headline,
+    fontFamily: theme.fonts.editorialItalic,
+    fontStyle: theme.editorialItalicStyle,
     fontSize: 32,
     lineHeight: 38,
     textAlign: "center",
     letterSpacing: 0.2,
+  },
+  reversedBadge: {
+    color: theme.colors.gold,
+    fontFamily: theme.fonts.bodySemi,
+    fontSize: 11,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    textAlign: "center",
+    marginTop: 6,
+    opacity: 0.88,
   },
   energyPill: {
     flexDirection: "row",
@@ -942,54 +1001,18 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     letterSpacing: 2,
   },
-  shortMeaning: {
+  mantra: {
     color: theme.colors.text,
-    fontFamily: theme.fonts.heading,
-    fontSize: 16,
-    lineHeight: 23,
-    textAlign: "center",
-    marginTop: 16,
-    fontStyle: "italic",
-    paddingHorizontal: 6,
-  },
-  adviceRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    marginTop: 18,
-    paddingHorizontal: 4,
-  },
-  adviceText: {
-    flex: 1,
-    color: theme.colors.textDim,
-    fontFamily: theme.fonts.body,
-    fontSize: 14,
-    lineHeight: 21,
-  },
-
-  reflectionCard: {
-    marginTop: 22,
-  },
-  reflectionInner: {
-    padding: 18,
-  },
-  reflectionLabel: {
-    color: theme.colors.gold,
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 10,
-    letterSpacing: 2.2,
-    marginBottom: 8,
-  },
-  reflectionText: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.heading,
+    fontFamily: theme.fonts.headingItalic,
     fontSize: 17,
     lineHeight: 24,
-    fontStyle: "italic",
+    textAlign: "center",
+    marginTop: 18,
+    paddingHorizontal: 8,
   },
 
   readMoreBtn: {
-    marginTop: 22,
+    marginTop: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1002,42 +1025,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 0.4,
   },
-  detailedBox: {
-    marginTop: 8,
-    padding: 16,
-    borderRadius: 14,
-    backgroundColor: "rgba(35,31,58,0.45)",
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+  detailsPanel: {
+    marginTop: 4,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+    gap: 16,
   },
   detailedText: {
     color: theme.colors.textDim,
     fontFamily: theme.fonts.body,
-    fontSize: 13.5,
-    lineHeight: 21,
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  reflectionPrompt: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.headingItalic,
+    fontSize: 16,
+    lineHeight: 22,
+    textAlign: "center",
   },
 
   intentionEcho: {
-    marginTop: 18,
-    paddingHorizontal: 6,
-  },
-  intentionEchoLabel: {
-    color: theme.colors.gold,
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 10,
-    letterSpacing: 2.2,
-    marginBottom: 6,
+    marginTop: 10,
+    paddingHorizontal: 8,
   },
   intentionEchoText: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.heading,
-    fontSize: 15,
-    lineHeight: 22,
-    fontStyle: "italic",
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.headingItalic,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
   },
 
   actionsRow: {
-    marginTop: 26,
+    marginTop: 22,
     flexDirection: "row",
     gap: 10,
     alignItems: "stretch",
@@ -1086,8 +1108,8 @@ const styles = StyleSheet.create({
 
   /* Error */
   errorTitle: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.display,
+    color: theme.colors.archive.headline,
+    fontWeight: "700",
     fontSize: 22,
     textAlign: "center",
   },

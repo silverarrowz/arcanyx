@@ -1,29 +1,47 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import { Eye, Layers } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
 import { theme } from "../../src/theme";
+import CosmicBackground from "../../src/components/CosmicBackground";
 import OracleScreen from "../../src/screens/OracleScreen";
 import TarotScreen from "../../src/screens/TarotScreen";
-import { useRemountOnTabFocus } from "../../src/hooks/useRemountOnTabFocus";
+import { useTarotSpreads } from "../../src/context/TarotSpreadsContext";
+
+const ICON_CARD = require("../../assets/icons/icon-card2.png");
+const ICON_ORACLE = require("../../assets/icons/icon-oracle.png");
 
 type GadanieTab = "oracle" | "tarot";
 
 export default function GadaniaScreen() {
   const router = useRouter();
   const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const { refresh: refreshSpreads } = useTarotSpreads();
   const [active, setActive] = useState<GadanieTab>(() =>
-    tab === "tarot" ? "tarot" : "oracle",
+    tab === "oracle" ? "oracle" : "tarot",
   );
-  const remountKey = useRemountOnTabFocus();
+  const [mounted, setMounted] = useState({
+    oracle: tab === "oracle",
+    tarot: tab !== "oracle",
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSpreads();
+    }, [refreshSpreads]),
+  );
 
   useEffect(() => {
     if (tab === "tarot") setActive("tarot");
     else if (tab === "oracle") setActive("oracle");
   }, [tab]);
+
+  useEffect(() => {
+    setMounted((prev) => (prev[active] ? prev : { ...prev, [active]: true }));
+  }, [active]);
 
   const select = (t: GadanieTab) => {
     if (t === active) return;
@@ -34,6 +52,7 @@ export default function GadaniaScreen() {
 
   return (
     <View style={styles.root} testID="gadania-root">
+      {active === "tarot" ? <CosmicBackground variant="tarot" /> : null}
       <SafeAreaView edges={["top"]} style={styles.segmentSafe}>
         <View style={styles.segmentPill}>
           <Pressable
@@ -53,10 +72,15 @@ export default function GadaniaScreen() {
                 style={StyleSheet.absoluteFill}
               />
             ) : null}
-            <Eye
-              color={active === "oracle" ? theme.colors.text : theme.colors.textDim}
-              size={17}
-              strokeWidth={active === "oracle" ? 2 : 1.6}
+            <Image
+              source={ICON_ORACLE}
+              style={{
+                width: 26,
+                height: 26,
+                marginRight: 4,
+              }}
+              tintColor={active === "oracle" ? theme.colors.text : theme.colors.textDim}
+              contentFit="contain"
             />
             <Text
               style={[
@@ -84,10 +108,15 @@ export default function GadaniaScreen() {
                 style={StyleSheet.absoluteFill}
               />
             ) : null}
-            <Layers
-              color={active === "tarot" ? theme.colors.text : theme.colors.textDim}
-              size={17}
-              strokeWidth={active === "tarot" ? 2 : 1.6}
+            <Image
+              source={ICON_CARD}
+              style={{
+                width: 32,
+                height: 32,
+                marginRight: 4,
+              }}
+              tintColor={active === "tarot" ? theme.colors.text : theme.colors.textDim}
+              contentFit="contain"
             />
             <Text
               style={[styles.segText, active === "tarot" && styles.segTextActive]}
@@ -98,11 +127,22 @@ export default function GadaniaScreen() {
         </View>
       </SafeAreaView>
       <View style={styles.content}>
-        {active === "oracle" ? (
-          <OracleScreen key={`oracle-${remountKey}`} embedded />
-        ) : (
-          <TarotScreen key={`tarot-${remountKey}`} embedded />
-        )}
+        {mounted.oracle ? (
+          <View
+            style={[styles.pane, active !== "oracle" && styles.paneHidden]}
+            pointerEvents={active === "oracle" ? "auto" : "none"}
+          >
+            <OracleScreen embedded />
+          </View>
+        ) : null}
+        {mounted.tarot ? (
+          <View
+            style={[styles.pane, active !== "tarot" && styles.paneHidden]}
+            pointerEvents={active === "tarot" ? "auto" : "none"}
+          >
+            <TarotScreen embedded />
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -116,9 +156,17 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  pane: {
+    flex: 1,
+  },
+  paneHidden: {
+    display: "none",
+  },
   segmentSafe: {
     paddingHorizontal: 20,
-    paddingBottom: 8,
+    paddingTop: 4,
+    paddingBottom: 6,
+    alignItems: "center",
   },
   segmentPill: {
     flexDirection: "row",

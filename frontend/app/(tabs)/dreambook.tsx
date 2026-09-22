@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useLocalSearchParams, useRouter, useScrollToTop } from "expo-router";
 import * as Haptics from "expo-haptics";
 import {
   KeyboardAvoidingView,
@@ -42,6 +41,7 @@ import Animated, {
 import { theme } from "../../src/theme";
 import CosmicBackground from "../../src/components/CosmicBackground";
 import GlassCard from "../../src/components/GlassCard";
+import ScreenHeading from "../../src/components/ScreenHeading";
 import DreamHistoryScreen from "../../src/screens/DreamHistoryScreen";
 import DreamInterpretLoadingScreen from "../../src/screens/DreamInterpretLoadingScreen";
 import { useRemountOnTabFocus } from "../../src/hooks/useRemountOnTabFocus";
@@ -49,103 +49,60 @@ import { useHistory } from "../../src/context/HistoryContext";
 import { useDreamDictation } from "../../src/hooks/useDreamDictation";
 import {
   DREAM_TEXT_MAX_LENGTH,
+  applyDreamIllustration,
   interpretDream,
+  startDreamIllustration,
 } from "../../src/services/dreamInterpretation";
 
-const CARD_BG = require("../../assets/home/bg-dream.png");
-const RECENT_THUMB = require("../../assets/home/qr-dreams.png");
+const CARD_BG = require("../../assets/home/bg-main-bottom.jpg");
 /** Высота многострочного поля (скролл внутри); карточка с фоном не меняет высоту */
 const DREAM_INPUT_BOX_H = 168;
 
-const THEME_CHIPS = [
-  "падение",
-  "полет",
-  "вода",
-  "зубы",
-  "погоня",
-  "дом",
-  "...",
-] as const;
-
-const POPULAR_SYMBOLS: {
-  key: string;
-  title: string;
-  subtitle: string;
-  Icon: React.ComponentType<{ color: string; size: number; strokeWidth?: number }>;
-  tint: string;
-}[] = [
-  {
-    key: "doors",
-    title: "Двери",
-    subtitle: "Возможности",
-    Icon: DoorOpen,
-    tint: "#C47BEA",
-  },
-  {
-    key: "stairs",
-    title: "Лестницы",
-    subtitle: "Рост и путь",
-    Icon: Layers,
-    tint: "#9D7CE6",
-  },
-  {
-    key: "water",
-    title: "Вода",
-    subtitle: "Эмоции",
-    Icon: Waves,
-    tint: "#61A5FA",
-  },
-  {
-    key: "bird",
-    title: "Птицы",
-    subtitle: "Послание",
-    Icon: Bird,
-    tint: "#FDA4AF",
-  },
-  {
-    key: "silhouette",
-    title: "Тень",
-    subtitle: "Скрытое",
-    Icon: UserRound,
-    tint: "#94A3B8",
-  },
-  {
-    key: "heart",
-    title: "Сердце",
-    subtitle: "Близость",
-    Icon: Heart,
-    tint: "#EFA0C0",
-  },
-];
-
-const MOCK_RECENT = [
-  {
-    key: "1",
-    title: "Сон о полёте над городом",
-    snippet: "Вы летели над огнями города, чувствуя легкость и радость…",
-    date: "18 мая 2026",
-    tag: "Свобода",
-  },
-];
-
+const RECENT_LIMIT = 3;
 const H_PAD = 24;
-const SYMBOL_GAP = 10;
+
+function formatRecentDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
 
 type DreamBookTab = "interpret" | "history";
 
 export default function DreamBookScreen() {
   const router = useRouter();
-  const { addItem } = useHistory();
+  const { addItem, items, updateItem } = useHistory();
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const { width: windowWidth } = useWindowDimensions();
   const [text, setText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
   const [active, setActive] = useState<DreamBookTab>(() =>
     tab === "history" ? "history" : "interpret",
   );
   const remountKey = useRemountOnTabFocus();
+
+  const recentDreams = useMemo(
+    () =>
+      items
+        .filter((item) => item.type === "dream")
+        .slice(0, RECENT_LIMIT)
+        .map((item) => ({
+          id: item.id,
+          title: item.answer || "Толкование сна",
+        snippet: item.dreamInterpretation ?? item.dreamText ?? item.answer,
+        date: formatRecentDate(item.date),
+        tag: item.dreamSymbols?.[0],
+        imageUrl: item.dreamImageUrl,
+        })),
+    [items],
+  );
 
   const appendDictatedText = useCallback((dictated: string) => {
     setText((prev) => {
@@ -207,15 +164,6 @@ export default function DreamBookScreen() {
     }, []),
   );
 
-  const insertChip = useCallback((chip: string) => {
-    if (chip === "...") return;
-    setText((prev) => {
-      const t = prev.trim();
-      if (!t) return chip;
-      return `${t}${t.endsWith(" ") ? "" : " "}${chip}`;
-    });
-  }, []);
-
   const trimmedLen = text.trim().length;
   const ctaDisabled = trimmedLen === 0 || isLoading;
 
@@ -225,6 +173,7 @@ export default function DreamBookScreen() {
 
     setError(null);
     setIsLoading(true);
+    const illustration = startDreamIllustration(dreamText);
     try {
       const response = await interpretDream({
         dreamText,
@@ -238,7 +187,9 @@ export default function DreamBookScreen() {
         dreamInterpretation: response.interpretation,
         dreamSymbols: response.symbols,
         dreamAdvice: response.advice,
+        dreamImageStatus: "pending",
       });
+      applyDreamIllustration(dreamId, illustration, updateItem);
       setText("");
       router.push(`/dream-result?id=${encodeURIComponent(dreamId)}` as never);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -252,11 +203,7 @@ export default function DreamBookScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [addItem, isLoading, router, text]);
-
-  const symbolColW = Math.floor(
-    (windowWidth - H_PAD * 2 - SYMBOL_GAP) / 2,
-  );
+  }, [addItem, isLoading, router, text, updateItem]);
 
   if (isLoading) {
     return <DreamInterpretLoadingScreen />;
@@ -264,7 +211,7 @@ export default function DreamBookScreen() {
 
   return (
     <View style={styles.root} testID="dreambook-root">
-      <CosmicBackground />
+      <CosmicBackground variant="dream" />
       <SafeAreaView style={styles.segmentSafe} edges={["top"]}>
         <View style={styles.segmentPill}>
           <Pressable
@@ -342,17 +289,10 @@ export default function DreamBookScreen() {
                 nestedScrollEnabled
               >
             {/* Заголовок — как Оракул / Таро: центр, ✦, display, подзаголовок */}
-            <View style={styles.heroCopy}>
-              <View style={styles.heroDivider}>
-                <View style={styles.heroDividerLine} />
-                <Text style={styles.heroDividerStar}>✦</Text>
-                <View style={styles.heroDividerLine} />
-              </View>
-              <Text style={styles.title}>Сонник</Text>
-              <Text style={styles.subtitle}>
-                Опишите свой сон — поможем раскрыть его тайный смысл.
-              </Text>
-            </View>
+            <ScreenHeading
+              title="Сонник"
+              deck="Опишите свой сон — поможем раскрыть его тайный смысл."
+            />
 
             <View style={styles.contentWrap}>
               {/* Карточка ввода — тот же приём, что блок снов на главной */}
@@ -368,7 +308,9 @@ export default function DreamBookScreen() {
                   source={CARD_BG}
                   style={styles.cardBgImage}
                   contentFit="cover"
-                  contentPosition="left center"
+                  contentPosition="right center"
+                  cachePolicy="memory-disk"
+                  pointerEvents="none"
                 />
                 <LinearGradient
                   colors={[
@@ -381,6 +323,7 @@ export default function DreamBookScreen() {
                   end={{ x: 1, y: 0 }}
                   locations={[0, 0.28, 0.58, 1]}
                   style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
                 />
 
                 <View style={styles.mainCardInner}>
@@ -444,15 +387,7 @@ export default function DreamBookScreen() {
                           />
                         )}
                       </Pressable>
-                    ) : (
-                      <View style={styles.inputSparkle} pointerEvents="none">
-                        <Sparkles
-                          color="rgba(255,215,154,0.45)"
-                          size={14}
-                          strokeWidth={1.4}
-                        />
-                      </View>
-                    )}
+                    ) : null}
                   </GlassCard>
 
                   {dictation.isListening || dictation.partialTranscript ? (
@@ -503,81 +438,14 @@ export default function DreamBookScreen() {
                 </View>
               </GlassCard>
 
-              <Text style={styles.sectionLabel}>Попробуйте темы</Text>
-              <GlassCard
-                borderColor={theme.colors.borderPurple}
-                intensity={20}
-                surfaceColor="rgba(98,82,142,0.12)"
-                overlayColor="rgba(116,95,168,0.1)"
-                style={styles.themesCard}
-              >
-                <View style={styles.chipsWrap}>
-                  {THEME_CHIPS.map((c) => (
-                    <Pressable
-                      key={c}
-                      onPress={() => insertChip(c)}
-                      style={({ pressed }) => [styles.chip, pressed && { opacity: 0.88 }]}
-                    >
-                      <Sparkles color={theme.colors.gold} size={10} strokeWidth={1.8} />
-                      <Text style={styles.chipText}>{c}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </GlassCard>
-
-              <View style={styles.sectionHeadBetween}>
-                <Text style={styles.sectionLabelTight}>Популярные символы во снах</Text>
-                <Pressable hitSlop={8} style={styles.seeAllPress}>
-                  <Text style={styles.seeLink}>Смотреть все</Text>
-                  <ArrowRight color={theme.colors.gold} size={14} strokeWidth={2} />
-                </Pressable>
-              </View>
-              <GlassCard
-                borderColor={theme.colors.borderPurple}
-                glow="purple"
-                intensity={18}
-                surfaceColor="rgba(98,82,142,0.14)"
-                overlayColor="rgba(116,95,168,0.12)"
-                style={styles.symbolsPanel}
-              >
-                <View style={styles.symbolsGrid}>
-                  {POPULAR_SYMBOLS.map((sym) => (
-                    <Pressable
-                      key={sym.key}
-                      style={({ pressed }) => [
-                        styles.symbolTile,
-                        { width: symbolColW },
-                        pressed && { opacity: 0.9 },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.symbolTileInner,
-                          { borderColor: sym.tint + "4D" },
-                        ]}
-                      >
-                        <LinearGradient
-                          colors={[
-                            `${sym.tint}35`,
-                            `${sym.tint}12`,
-                            "rgba(18,16,34,0.4)",
-                          ]}
-                          start={{ x: 0.2, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={StyleSheet.absoluteFill}
-                        />
-                        <sym.Icon color={sym.tint} size={28} strokeWidth={1.35} />
-                      </View>
-                      <Text style={styles.symTitle}>{sym.title}</Text>
-                      <Text style={styles.symSub}>{sym.subtitle}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </GlassCard>
-
               <View style={styles.sectionHeadBetween}>
                 <Text style={styles.sectionLabelTight}>Недавние толкования</Text>
-                <Pressable hitSlop={8} style={styles.seeAllPress}>
+                <Pressable
+                  hitSlop={8}
+                  style={styles.seeAllPress}
+                  onPress={() => selectTab("history")}
+                  accessibilityLabel="Смотреть все толкования"
+                >
                   <Text style={styles.seeLink}>Смотреть все</Text>
                   <ArrowRight color={theme.colors.gold} size={14} strokeWidth={2} />
                 </Pressable>
@@ -590,31 +458,54 @@ export default function DreamBookScreen() {
                 overlayColor="rgba(116,95,168,0.08)"
                 style={styles.recentPanel}
               >
-                {MOCK_RECENT.map((it, idx) => (
-                  <Pressable
-                    key={it.key}
-                    style={[
-                      styles.recentRow,
-                      idx < MOCK_RECENT.length - 1 && styles.recentRowBorder,
-                    ]}
-                  >
-                    <Image source={RECENT_THUMB} style={styles.recentThumb} contentFit="cover" />
-                    <View style={styles.recentBody}>
-                      <Text style={styles.recentTitle}>{it.title}</Text>
-                      <Text style={styles.recentSnippet} numberOfLines={2}>
-                        {it.snippet}
-                      </Text>
-                      <View style={styles.recentMeta}>
-                        <Text style={styles.recentDate}>{it.date}</Text>
-                        <View style={styles.recentTag}>
-                          <Sparkles color={theme.colors.gold} size={10} strokeWidth={1.7} />
-                          <Text style={styles.recentTagText}>{it.tag}</Text>
+                {recentDreams.length === 0 ? (
+                  <View style={styles.recentEmpty}>
+                    <Text style={styles.recentEmptyTitle}>Пока нет толкований</Text>
+                    <Text style={styles.recentEmptyText}>
+                      Опишите сон выше — и недавние расшифровки появятся здесь.
+                    </Text>
+                  </View>
+                ) : (
+                  recentDreams.map((it, idx) => (
+                    <Pressable
+                      key={it.id}
+                      onPress={() =>
+                        router.push(`/dream-result?id=${encodeURIComponent(it.id)}` as never)
+                      }
+                      style={({ pressed }) => [
+                        styles.recentRow,
+                        idx < recentDreams.length - 1 && styles.recentRowBorder,
+                        pressed && { opacity: 0.92 },
+                      ]}
+                    >
+                      {it.imageUrl ? (
+                        <Image
+                          source={{ uri: it.imageUrl }}
+                          style={styles.recentThumb}
+                          contentFit="cover"
+                        />
+                      ) : null}
+                      <View style={styles.recentBody}>
+                        <Text style={styles.recentTitle} numberOfLines={1}>
+                          {it.title}
+                        </Text>
+                        <Text style={styles.recentSnippet} numberOfLines={2}>
+                          {it.snippet}
+                        </Text>
+                        <View style={styles.recentMeta}>
+                          {it.date ? <Text style={styles.recentDate}>{it.date}</Text> : null}
+                          {it.tag ? (
+                            <View style={styles.recentTag}>
+                              <Sparkles color={theme.colors.gold} size={10} strokeWidth={1.7} />
+                              <Text style={styles.recentTagText}>{it.tag}</Text>
+                            </View>
+                          ) : null}
                         </View>
                       </View>
-                    </View>
-                    <ArrowRight color={theme.colors.textDim} size={20} strokeWidth={1.8} />
-                  </Pressable>
-                ))}
+                      <ArrowRight color={theme.colors.textDim} size={20} strokeWidth={1.8} />
+                    </Pressable>
+                  ))
+                )}
               </GlassCard>
 
               <View style={{ height: 120 }} />
@@ -735,7 +626,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   cardBgImage: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "100%",
     opacity: 0.88,
   },
   mainCardInner: {
@@ -767,26 +662,21 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     borderRadius: 22,
     position: "relative",
-    overflow: "hidden",
-    /** Фиксированная высота блока ввода — карточка и фон не тянутся с ростом текста */
-    maxHeight: DREAM_INPUT_BOX_H,
   },
   dreamInput: {
     width: "100%",
     height: DREAM_INPUT_BOX_H,
     maxHeight: DREAM_INPUT_BOX_H,
-    paddingHorizontal: 16,
+    paddingLeft: 16,
+    paddingRight: 36,
     paddingTop: 12,
     paddingBottom: 52,
     fontFamily: theme.fonts.body,
     fontSize: 14,
     lineHeight: 21,
     color: theme.colors.text,
-  },
-  inputSparkle: {
-    position: "absolute",
-    top: 12,
-    right: 12,
+    // @ts-ignore - web only
+    outlineStyle: "none",
   },
   micButton: {
     position: "absolute",
@@ -873,15 +763,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   /** Как OracleScreen.sourceTitle */
-  sectionLabel: {
-    color: theme.colors.lilac,
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 11,
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
-    marginTop: 8,
-    marginBottom: 10,
-  },
   sectionHeadBetween: {
     flexDirection: "row",
     alignItems: "center",
@@ -901,35 +782,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
-  themesCard: {
-    marginBottom: 6,
-    borderRadius: theme.radius.lg,
-    overflow: "hidden",
-  },
-  chipsWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: "rgba(246,240,255,0.06)",
-  },
-  chipText: {
-    fontFamily: theme.fonts.bodyMedium,
-    fontSize: 12,
-    color: theme.colors.textDim,
-  },
-
   seeLink: {
     color: theme.colors.gold,
     fontFamily: theme.fonts.bodyMedium,
@@ -939,45 +791,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
-  },
-
-  symbolsPanel: {
-    marginBottom: 4,
-    overflow: "hidden",
-  },
-  symbolsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: SYMBOL_GAP,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 16,
-  },
-  symbolTile: {
-    marginBottom: 4,
-  },
-  symbolTileInner: {
-    width: "100%",
-    aspectRatio: 1.05,
-    borderRadius: 20,
-    marginBottom: 10,
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    backgroundColor: "rgba(18,16,34,0.45)",
-  },
-  symTitle: {
-    fontFamily: theme.fonts.heading,
-    fontSize: 15,
-    color: theme.colors.text,
-    marginBottom: 3,
-  },
-  symSub: {
-    fontFamily: theme.fonts.body,
-    fontSize: 12,
-    color: theme.colors.textMuted,
-    lineHeight: 16,
+    gap: 10,
   },
 
   recentPanel: {
@@ -995,13 +809,32 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },
-  recentBody: { flex: 1, minWidth: 0 },
   recentThumb: {
-    width: 58,
-    height: 58,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: theme.colors.borderGold,
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: "rgba(246,240,255,0.08)",
+  },
+  recentBody: { flex: 1, minWidth: 0 },
+  recentEmpty: {
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  recentEmptyTitle: {
+    fontFamily: theme.fonts.heading,
+    fontSize: 15,
+    color: theme.colors.text,
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  recentEmptyText: {
+    fontFamily: theme.fonts.body,
+    fontSize: 12,
+    lineHeight: 18,
+    color: theme.colors.textDim,
+    textAlign: "center",
+    maxWidth: 260,
   },
   recentTitle: {
     fontFamily: theme.fonts.heading,

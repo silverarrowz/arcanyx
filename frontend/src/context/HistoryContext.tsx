@@ -4,21 +4,43 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  fetchRemoteHistory,
+  mergeRemoteHistory,
+  saveRemoteHistory,
+} from "../services/historyApi";
+import { useUser } from "./UserContext";
 
 export type TarotCardSnapshot = {
   positionId: string;
   positionLabelRu: string;
   cardId: string;
   cardName: string;
+  /** Rider–Waite reversal. Absent on older saves = upright. */
+  reversed?: boolean;
+};
+
+export type TarotChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type TarotChatState = {
+  conversationId: string;
+  topic?: string;
+  question: string;
+  followupsUsed: number;
+  messages: TarotChatMessage[];
 };
 
 export type HistoryItem = {
   id: string;
-  type: "oracle" | "tarot" | "dream";
+  type: "oracle" | "tarot" | "dream" | "note";
   date: string; // ISO
   question: string;
   answer: string;
@@ -27,6 +49,8 @@ export type HistoryItem = {
   oracleSourceLabel?: string;
   cardId?: string; // tarot card id (one-card spread)
   cardName?: string;
+  /** One-card / daily-card reversal. Absent on older saves = upright. */
+  cardReversed?: boolean;
   outcome?: "fulfilled" | "failed" | null; // for oracle items
   // Tarot spread extensions (optional, backwards-compatible)
   spread?: string; // e.g. "one-card" | "three-time" | "three-situation" | "love-three" | legacy "three-card"
@@ -35,21 +59,36 @@ export type HistoryItem = {
   cardsSnapshot?: TarotCardSnapshot[];
   /** Short synthesized interpretation for multi-card spreads (local mock, no AI). */
   tarotSummaryRu?: string;
+  /** User-written note for a tarot spread ("Моё толкование"). */
+  userInterpretation?: string;
+  /** AI chat transcript for this spread (Conversations API). */
+  tarotChat?: TarotChatState;
   dreamText?: string;
   dreamInterpretation?: string;
   dreamSymbols?: string[];
   dreamAdvice?: string;
+  /** Durable public URL of the generated dream illustration. */
+  dreamImageUrl?: string;
+  /** Illustration may still be generating after the interpretation is shown. */
+  dreamImageStatus?: "pending" | "ready" | "failed";
+  favorite?: boolean;
 };
+
+type HistoryItemPatch = Partial<Omit<HistoryItem, "id">>;
 
 type HistoryContextValue = {
   items: HistoryItem[];
+  hydrated: boolean;
+  syncing: boolean;
   addItem: (item: Omit<HistoryItem, "id" | "date">) => string;
+  updateItem: (id: string, patch: HistoryItemPatch) => void;
   setOutcome: (id: string, outcome: "fulfilled" | "failed" | null) => void;
   removeItem: (id: string) => void;
+  clearItems: () => void;
   streak: number;
 };
 
-const STORAGE_KEY = "@mystic_history_v1";
+const GUEST_STORAGE_KEY = "@mystic_history_v1";
 
 const seedItems: HistoryItem[] = [
   {
@@ -83,22 +122,92 @@ const seedItems: HistoryItem[] = [
 
 const HistoryContext = createContext<HistoryContextValue | undefined>(undefined);
 
+function userStorageKey(userId: string) {
+  return `@mystic_history_user_v1:${userId}`;
+}
+
+function isSeedItem(item: HistoryItem) {
+  return item.id.startsWith("seed-");
+}
+
+function parseStoredHistory(raw: string | null): HistoryItem[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as HistoryItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function guestItemsForMigration(...sources: HistoryItem[][]): HistoryItem[] {
+  const byId = new Map<string, HistoryItem>();
+  for (const items of sources) {
+    for (const item of items) {
+      if (
+        !item?.id ||
+        isSeedItem(item) ||
+        !["tarot", "dream", "note"].includes(item.type)
+      ) {
+        continue;
+      }
+      if (!byId.has(item.id)) byId.set(item.id, item);
+    }
+  }
+  return [...byId.values()];
+}
+
+function mergeServerFirst(
+  serverItems: HistoryItem[],
+  localItems: HistoryItem[],
+): HistoryItem[] {
+  const byId = new Map<string, HistoryItem>();
+  for (const item of serverItems) byId.set(item.id, item);
+  for (const item of localItems) {
+    if (!byId.has(item.id)) byId.set(item.id, item);
+  }
+  return [...byId.values()].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  );
+}
+
 export function HistoryProvider({ children }: { children: ReactNode }) {
+  const {
+    id: userId,
+    token,
+    isAuthenticated,
+    hydrated: userHydrated,
+  } = useUser();
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [syncing, setSyncing] = useState(true);
+  const itemsRef = useRef<HistoryItem[]>([]);
+  const guestCache = useRef<HistoryItem[] | null>(null);
+  const sourceRef = useRef<"guest" | "user">("guest");
+  const skipPersistOnce = useRef(false);
+  const skipRemoteSync = useRef(true);
+  const lastAuthKey = useRef<string | null>(null);
+  const authGeneration = useRef(0);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   useEffect(() => {
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        const raw = await AsyncStorage.getItem(GUEST_STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw) as HistoryItem[];
+          guestCache.current = parsed;
           setItems(parsed);
         } else {
+          guestCache.current = seedItems;
           setItems(seedItems);
-          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(seedItems));
+          await AsyncStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(seedItems));
         }
       } catch {
+        guestCache.current = seedItems;
         setItems(seedItems);
       } finally {
         setHydrated(true);
@@ -107,9 +216,164 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!hydrated || !userHydrated) return;
+
+    const authKey = isAuthenticated && token && userId ? userId : null;
+    if (lastAuthKey.current === authKey) return;
+    lastAuthKey.current = authKey;
+    const generation = ++authGeneration.current;
+
+    if (!authKey || !token) {
+      skipPersistOnce.current = true;
+      skipRemoteSync.current = true;
+      sourceRef.current = "guest";
+      setSyncing(false);
+      setItems(guestCache.current ?? seedItems);
+      return;
+    }
+
+    let cancelled = false;
+    skipPersistOnce.current = true;
+    skipRemoteSync.current = true;
+    sourceRef.current = "user";
+    setSyncing(true);
+    const itemsAtLogin = itemsRef.current;
+    const itemIdsAtLogin = new Set(itemsAtLogin.map((item) => item.id));
+
+    (async () => {
+      let serverConfirmed = false;
+      let accountCache: HistoryItem[] = [];
+      let confirmedServerItems: HistoryItem[] | null = null;
+      try {
+        const [cachedRaw, guestRaw] = await Promise.all([
+          AsyncStorage.getItem(userStorageKey(authKey)),
+          AsyncStorage.getItem(GUEST_STORAGE_KEY),
+        ]);
+        accountCache = parseStoredHistory(cachedRaw);
+        if (
+          !cancelled &&
+          generation === authGeneration.current &&
+          lastAuthKey.current === authKey
+        ) {
+          setItems(accountCache);
+        }
+        const storedGuestItems = parseStoredHistory(guestRaw);
+        const guestSnapshot = guestItemsForMigration(
+          storedGuestItems,
+          guestCache.current ?? [],
+          itemsAtLogin,
+        );
+
+        let serverItems =
+          guestSnapshot.length > 0
+            ? await mergeRemoteHistory(token, guestSnapshot)
+            : await fetchRemoteHistory(token);
+        confirmedServerItems = serverItems;
+        serverConfirmed = true;
+        if (
+          cancelled ||
+          generation !== authGeneration.current ||
+          lastAuthKey.current !== authKey
+        ) {
+          return;
+        }
+
+        // Preserve an item created after OAuth returned but before migration finished.
+        const serverIds = new Set(serverItems.map((item) => item.id));
+        const pendingItems = guestItemsForMigration(itemsRef.current).filter(
+          (item) => !serverIds.has(item.id),
+        );
+        if (pendingItems.length > 0) {
+          serverItems = await mergeRemoteHistory(token, pendingItems);
+          confirmedServerItems = serverItems;
+        }
+        if (
+          cancelled ||
+          generation !== authGeneration.current ||
+          lastAuthKey.current !== authKey
+        ) {
+          return;
+        }
+
+        const newestPendingItems = guestItemsForMigration(itemsRef.current);
+        const mergedItems = mergeServerFirst(serverItems, newestPendingItems);
+
+        await AsyncStorage.multiSet([
+          [userStorageKey(authKey), JSON.stringify(mergedItems)],
+          [GUEST_STORAGE_KEY, JSON.stringify([])],
+        ]);
+        if (
+          cancelled ||
+          generation !== authGeneration.current ||
+          lastAuthKey.current !== authKey
+        ) {
+          return;
+        }
+
+        guestCache.current = [];
+        setItems(mergedItems);
+      } catch {
+        // Keep guest data for a later retry and preserve actions made during login.
+        if (
+          !cancelled &&
+          generation === authGeneration.current &&
+          lastAuthKey.current === authKey
+        ) {
+          const createdDuringLogin = itemsRef.current.filter(
+            (item) => !isSeedItem(item) && !itemIdsAtLogin.has(item.id),
+          );
+          setItems(
+            mergeServerFirst(
+              confirmedServerItems ?? accountCache,
+              createdDuringLogin,
+            ),
+          );
+        }
+      } finally {
+        if (
+          !cancelled &&
+          generation === authGeneration.current &&
+          lastAuthKey.current === authKey
+        ) {
+          setSyncing(false);
+          if (serverConfirmed) {
+            skipRemoteSync.current = false;
+          }
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, userHydrated, isAuthenticated, token, userId]);
+
+  useEffect(() => {
     if (!hydrated) return;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items)).catch(() => {});
-  }, [items, hydrated]);
+    if (skipPersistOnce.current) {
+      skipPersistOnce.current = false;
+      return;
+    }
+    if (sourceRef.current === "user" && userId) {
+      AsyncStorage.setItem(userStorageKey(userId), JSON.stringify(items)).catch(() => {});
+      return;
+    }
+    if (sourceRef.current === "guest") {
+      guestCache.current = items;
+      AsyncStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(items)).catch(() => {});
+    }
+  }, [items, hydrated, userId]);
+
+  useEffect(() => {
+    if (!hydrated || !isAuthenticated || !token || skipRemoteSync.current) return;
+    const handle = setTimeout(() => {
+      saveRemoteHistory(
+        token,
+        itemsRef.current.filter((item) => !isSeedItem(item)),
+      ).catch(() => {});
+    }, 600);
+    return () => clearTimeout(handle);
+  }, [items, hydrated, isAuthenticated, token]);
 
   const addItem = useCallback(
     (item: Omit<HistoryItem, "id" | "date">) => {
@@ -127,6 +391,12 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const updateItem = useCallback((id: string, patch: HistoryItemPatch) => {
+    setItems((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+    );
+  }, []);
+
   const setOutcome = useCallback(
     (id: string, outcome: "fulfilled" | "failed" | null) => {
       setItems((prev) =>
@@ -138,6 +408,10 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
 
   const removeItem = useCallback((id: string) => {
     setItems((prev) => prev.filter((it) => it.id !== id));
+  }, []);
+
+  const clearItems = useCallback(() => {
+    setItems([]);
   }, []);
 
   // Simple streak: count of unique consecutive days with at least one item, ending today/yesterday
@@ -162,8 +436,18 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   }, [items]);
 
   const value = useMemo(
-    () => ({ items, addItem, setOutcome, removeItem, streak }),
-    [items, addItem, setOutcome, removeItem, streak],
+    () => ({
+      items,
+      hydrated,
+      syncing,
+      addItem,
+      updateItem,
+      setOutcome,
+      removeItem,
+      clearItems,
+      streak,
+    }),
+    [items, hydrated, syncing, addItem, updateItem, setOutcome, removeItem, clearItems, streak],
   );
 
   return (

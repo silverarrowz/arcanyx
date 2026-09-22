@@ -1,0 +1,154 @@
+[
+  {
+    "slug": "one-card",
+    "titleRu": "Карта момента",
+    "subtitleRu": "Быстрый совет на ситуацию · 1 карта",
+    "positions": [{"id": "answer", "labelRu": "Ответ"}],
+    "coverAsset": "bgi1.jpg",
+    "sort": 10
+  },
+  {
+    "slug": "three-time",
+    "titleRu": "Ваш путь",
+    "subtitleRu": "Прошлое · Настоящее · Будущее · 3 карты",
+    "positions": [
+      {"id": "past", "labelRu": "Прошлое"},
+      {"id": "present", "labelRu": "Настоящее"},
+      {"id": "future", "labelRu": "Будущее"}
+    ],
+    "coverAsset": "bgi2.jpg",
+    "sort": 20
+  },
+  {
+    "slug": "three-situation",
+    "titleRu": "Ситуация · Совет · Исход",
+    "subtitleRu": "Что происходит · что делать · куда ведёт путь · 3 карты",
+    "positions": [
+      {"id": "situation", "labelRu": "Ситуация"},
+      {"id": "advice", "labelRu": "Совет"},
+      {"id": "outcome", "labelRu": "Исход"}
+    ],
+    "coverAsset": "bgi3.jpg",
+    "sort": 30
+  },
+  {
+    "slug": "love-three",
+    "titleRu": "Расклад на отношения",
+    "subtitleRu": "Вы · Он/она · Потенциал · 3 карты",
+    "positions": [
+      {"id": "you", "labelRu": "Вы"},
+      {"id": "them", "labelRu": "Он/она"},
+      {"id": "potential", "labelRu": "Потенциал"}
+    ],
+    "coverAsset": "sprd-love.jpg",
+    "sort": 40
+  },
+  {
+    "slug": "thoughts",
+    "titleRu": "Мысли человека",
+    "subtitleRu": "Что он/она думает · чувствует · скрывает · 3 карты",
+    "positions": [
+      {"id": "thoughts", "labelRu": "Мысли"},
+      {"id": "feelings", "labelRu": "Чувства"},
+      {"id": "hidden", "labelRu": "Скрывает"}
+    ],
+    "coverAsset": "sprd-thoughts2.jpg",
+    "sort": 50
+  },
+  {
+    "slug": "choice",
+    "titleRu": "Выбор пути",
+    "subtitleRu": "Путь A · Путь B · совет · 3 карты",
+    "positions": [
+      {"id": "path-a", "labelRu": "Путь A"},
+      {"id": "path-b", "labelRu": "Путь B"},
+      {"id": "advice", "labelRu": "Совет"}
+    ],
+    "coverAsset": "sprd-2ways.jpg",
+    "sort": 60
+  },
+  {
+    "slug": "career-growth",
+    "titleRu": "Рост в карьере",
+    "subtitleRu": "Где вы сейчас · куда можете вырасти · что нужно сделать · 3 карты",
+    "positions": [
+      {"id": "where-now", "labelRu": "Где вы сейчас"},
+      {"id": "grow-to", "labelRu": "Куда можете вырасти"},
+      {"id": "what-to-do", "labelRu": "Что нужно сделать"}
+    ],
+    "coverAsset": "sprd-career2.jpg",
+    "sort": 70
+  },
+  {
+    "slug": "where-money",
+    "titleRu": "На деньги",
+    "subtitleRu": "Скрытая возможность · что упускаете · как получить · 3 карты",
+    "positions": [
+      {"id": "hidden-opportunity", "labelRu": "Скрытая возможность"},
+      {"id": "what-miss", "labelRu": "Что упускаете"},
+      {"id": "how-get", "labelRu": "Как получить"}
+    ],
+    "coverAsset": "sprd-riches.jpg",
+    "sort": 80
+  },
+  {
+    "slug": "yes-no",
+    "titleRu": "Да / Нет",
+    "subtitleRu": "Конкретный ответ на закрытый вопрос · 1 карта",
+    "positions": [{"id": "answer", "labelRu": "Ответ"}],
+    "coverAsset": "sprd-yesno.jpg",
+    "sort": 90
+  },
+  {
+    "slug": "problem-solution",
+    "titleRu": "Проблема и решение",
+    "subtitleRu": "Истинная суть и как это исправить · 2 карты",
+    "positions": [
+      {"id": "problem", "labelRu": "Суть проблемы"},
+      {"id": "solution", "labelRu": "Решение"}
+    ],
+    "coverAsset": "sprd-problem.jpg",
+    "sort": 100
+  },
+  {
+    "slug": "blind-spot",
+    "titleRu": "Слепое пятно",
+    "subtitleRu": "Что скрыто от вас и других · 4 карты",
+    "positions": [
+      {"id": "known-to-me", "labelRu": "Что я знаю"},
+      {"id": "known-to-others", "labelRu": "Что видят другие"},
+      {"id": "blind-spot", "labelRu": "Слепое пятно"},
+      {"id": "potential", "labelRu": "Скрытый потенциал"}
+    ],
+    "coverAsset": "sprd-blind.jpg",
+    "sort": 110
+  },
+  {
+    "slug": "relationship-cross",
+    "titleRu": "Крест отношений",
+    "subtitleRu": "Глубокий разбор связи между двумя · 5 карт",
+    "positions": [
+      {"id": "my-feelings", "labelRu": "Ваш вклад"},
+      {"id": "their-feelings", "labelRu": "Вклад партнёра"},
+      {"id": "foundation", "labelRu": "Фундамент"},
+      {"id": "obstacle", "labelRu": "Преграда"},
+      {"id": "future", "labelRu": "Будущее"}
+    ],
+    "coverAsset": "sprd-relcross.jpg",
+    "sort": 120
+  },
+  {
+    "slug": "purpose",
+    "titleRu": "Предназначение",
+    "subtitleRu": "Поиск своего пути и самореализации · 5 карт",
+    "positions": [
+      {"id": "strength", "labelRu": "Сильная сторона"},
+      {"id": "weakness", "labelRu": "Что тормозит"},
+      {"id": "joy", "labelRu": "Источник радости"},
+      {"id": "success", "labelRu": "Где ваш успех"},
+      {"id": "mission", "labelRu": "Следующий шаг"}
+    ],
+    "coverAsset": "sprd-purpose.jpg",
+    "sort": 130
+  }
+]

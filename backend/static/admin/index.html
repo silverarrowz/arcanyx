@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arcanyx — управление контентом</title>
+    <link rel="stylesheet" href="/admin/admin.css" />
+  </head>
+  <body>
+    <main>
+      <section id="login-view" class="login-card hidden">
+        <p class="eyebrow">ARCANYX</p>
+        <h1>Управление контентом</h1>
+        <p>Закрытая панель управления каталогом.</p>
+        <button id="login-button" class="primary">Войти через Google</button>
+        <p id="login-error" class="error"></p>
+      </section>
+
+      <section id="app-view" class="hidden">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">ARCANYX · ADMIN</p>
+            <h1 id="section-title">Медитации</h1>
+          </div>
+          <div class="account">
+            <span id="account-email"></span>
+            <button id="logout-button" class="ghost">Выйти</button>
+          </div>
+        </header>
+
+        <div id="storage-warning" class="warning hidden"></div>
+        <div id="flash" class="flash hidden"></div>
+
+        <nav class="content-tabs" aria-label="Разделы">
+          <button id="tab-meditations" class="content-tab active">Медитации</button>
+          <button id="tab-spreads" class="content-tab">Расклады Таро</button>
+        </nav>
+
+        <div id="meditations-panel" class="workspace">
+          <aside>
+            <div class="aside-head">
+              <div>
+                <strong>Каталог</strong>
+                <small id="item-count"></small>
+              </div>
+              <button id="new-button" class="primary compact">+ Новая</button>
+            </div>
+            <p class="drag-hint">Перетащите карточки, чтобы изменить порядок.</p>
+            <div id="meditation-list" class="meditation-list"></div>
+          </aside>
+
+          <section class="editor">
+            <div id="empty-editor" class="empty">
+              Выберите медитацию или создайте новую.
+            </div>
+            <form id="editor-form" class="hidden">
+              <div class="editor-title">
+                <div>
+                  <span id="publish-badge" class="badge">Черновик</span>
+                  <h2 id="editor-heading">Новая медитация</h2>
+                </div>
+                <button type="button" id="archive-button" class="danger ghost">
+                  В архив
+                </button>
+              </div>
+
+              <div class="field-grid">
+                <label>
+                  Название
+                  <input id="title" required maxlength="160" />
+                </label>
+                <label>
+                  Slug
+                  <input id="slug" required maxlength="80" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" />
+                </label>
+              </div>
+              <label>
+                Описание
+                <textarea id="description" rows="5" maxlength="8000"></textarea>
+              </label>
+              <div class="field-grid">
+                <label>
+                  Теги через запятую
+                  <input id="tags" />
+                </label>
+                <label>
+                  Порядок
+                  <input id="sort" type="number" value="0" />
+                </label>
+              </div>
+
+              <div class="save-row">
+                <button type="submit" class="primary">Сохранить черновик</button>
+                <span id="save-state"></span>
+              </div>
+
+              <div id="media-section" class="media-grid hidden">
+                <article class="media-card">
+                  <h3>Аудио</h3>
+                  <p id="audio-meta" class="muted">Файл не загружен</p>
+                  <audio id="audio-preview" class="hidden" controls preload="metadata"></audio>
+                  <label class="dropzone">
+                    <input id="audio-file" type="file" accept=".mp3,audio/mpeg" />
+                    <span>Выберите или перетащите MP3</span>
+                    <small>До 120 МБ. Длительность определяется автоматически.</small>
+                  </label>
+                  <progress id="audio-progress" class="hidden" max="100" value="0"></progress>
+                  <div id="rollback-wrap" class="rollback hidden">
+                    <label>
+                      Предыдущая версия
+                      <select id="audio-version"></select>
+                    </label>
+                    <button type="button" id="rollback-button" class="ghost">
+                      Откатить аудио
+                    </button>
+                  </div>
+                </article>
+
+                <article class="media-card">
+                  <h3>Обложка</h3>
+                  <div class="cover-frame">
+                    <img id="cover-preview" class="hidden" alt="Обложка" />
+                    <span id="cover-placeholder">Нет обложки</span>
+                  </div>
+                  <label class="dropzone">
+                    <input id="cover-file" type="file" accept=".jpg,.jpeg,.png,.webp,image/*" />
+                    <span>Выберите или перетащите изображение</span>
+                    <small>JPG, PNG или WebP до 12 МБ.</small>
+                  </label>
+                  <progress id="cover-progress" class="hidden" max="100" value="0"></progress>
+                  <div id="cover-rollback-wrap" class="rollback hidden">
+                    <label>
+                      Предыдущая обложка
+                      <select id="cover-version"></select>
+                    </label>
+                    <button type="button" id="cover-rollback-button" class="ghost">
+                      Откатить обложку
+                    </button>
+                  </div>
+                </article>
+              </div>
+
+              <div id="publish-actions" class="publish-actions hidden">
+                <button type="button" id="publish-button" class="primary">
+                  Опубликовать
+                </button>
+                <button type="button" id="unpublish-button" class="ghost hidden">
+                  Снять с публикации
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        <div id="spreads-panel" class="workspace hidden">
+          <aside>
+            <div class="aside-head">
+              <div>
+                <strong>Расклады</strong>
+                <small id="spread-item-count"></small>
+              </div>
+              <button id="spread-new-button" class="primary compact">+ Новый</button>
+            </div>
+            <p class="drag-hint">Перетащите карточки, чтобы изменить порядок.</p>
+            <div id="spread-list" class="meditation-list"></div>
+          </aside>
+
+          <section class="editor">
+            <div id="spread-empty-editor" class="empty">
+              Выберите расклад или создайте новый.
+            </div>
+            <form id="spread-editor-form" class="hidden">
+              <div class="editor-title">
+                <div>
+                  <span id="spread-publish-badge" class="badge">Черновик</span>
+                  <h2 id="spread-editor-heading">Новый расклад</h2>
+                </div>
+                <button type="button" id="spread-archive-button" class="danger ghost">
+                  В архив
+                </button>
+              </div>
+
+              <div class="field-grid">
+                <label>
+                  Название
+                  <input id="spread-title" required maxlength="180" />
+                </label>
+                <label>
+                  Slug
+                  <input id="spread-slug" required maxlength="80" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" />
+                </label>
+              </div>
+              <label>
+                Подзаголовок
+                <textarea id="spread-subtitle" rows="3" required maxlength="300"></textarea>
+              </label>
+              <label class="sort-field">
+                Порядок
+                <input id="spread-sort" type="number" value="0" />
+              </label>
+
+              <section class="positions-editor">
+                <div class="positions-head">
+                  <div>
+                    <h3>Позиции карт</h3>
+                    <small>От 1 до 5. Порядок определяет расклад.</small>
+                  </div>
+                  <button type="button" id="spread-add-position" class="ghost compact">
+                    + Позиция
+                  </button>
+                </div>
+                <div id="spread-positions"></div>
+              </section>
+
+              <div class="save-row">
+                <button type="submit" class="primary">Сохранить черновик</button>
+                <span id="spread-save-state"></span>
+              </div>
+
+              <div id="spread-media-section" class="spread-media hidden">
+                <article class="media-card">
+                  <h3>Фоновое изображение</h3>
+                  <div class="spread-cover-frame">
+                    <img id="spread-cover-preview" class="hidden" alt="Фон расклада" />
+                    <span id="spread-cover-placeholder">Нет изображения</span>
+                  </div>
+                  <label class="dropzone">
+                    <input id="spread-cover-file" type="file" accept=".jpg,.jpeg,.png,.webp,image/*" />
+                    <span>Выберите или перетащите изображение</span>
+                    <small>Изображение не обрезается, до 12 МБ.</small>
+                  </label>
+                  <progress id="spread-cover-progress" class="hidden" max="100" value="0"></progress>
+                  <div id="spread-cover-rollback-wrap" class="rollback hidden">
+                    <label>
+                      Предыдущая версия
+                      <select id="spread-cover-version"></select>
+                    </label>
+                    <button type="button" id="spread-cover-rollback-button" class="ghost">
+                      Откатить изображение
+                    </button>
+                  </div>
+                </article>
+              </div>
+
+              <div id="spread-publish-actions" class="publish-actions hidden">
+                <button type="button" id="spread-publish-button" class="primary">
+                  Опубликовать
+                </button>
+                <button type="button" id="spread-unpublish-button" class="ghost hidden">
+                  Снять с публикации
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+    <script src="/admin/admin.js" defer></script>
+  </body>
+</html>

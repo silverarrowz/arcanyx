@@ -1,13 +1,13 @@
-import React from "react";
-import { View, StyleSheet, ViewStyle, StyleProp } from "react-native";
-import { BlurView } from "expo-blur";
+import React, { useState } from "react";
+import { Platform, View, StyleSheet, ViewStyle, StyleProp } from "react-native";
+import { BlurView, type BlurTint } from "expo-blur";
 import { theme } from "../theme";
 
 type Props = {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   intensity?: number;
-  tint?: "dark" | "light" | "default";
+  tint?: BlurTint;
   borderColor?: string;
   glow?: "gold" | "purple" | "none";
   surfaceColor?: string;
@@ -40,41 +40,80 @@ export default function GlassCard({
 
   const borderCol = borderColor ?? theme.colors.border;
   const surfCol = surfaceColor ?? theme.colors.surfaceGlass;
-  const overCol = overlayColor ?? "rgba(35,31,58,0.74)";
+  const overCol = overlayColor ?? "rgba(26,24,36,0.74)";
+  const [backdropSize, setBackdropSize] = useState({ width: 0, height: 0 });
 
   if (allowOverflow) {
+    const measured = backdropSize.width > 0 && backdropSize.height > 0;
+    const frostOnNative = Platform.OS !== "web";
     return (
-      <View style={[styles.wrapper, glowStyle, style]}>
-        <View style={[styles.overflowShell, { borderColor: borderCol }]}>
-          {/* Native BlurView often ignores borderRadius — clip blur + tint in a rounded View. */}
-          <View style={styles.overflowBackdropClip}>
-            <BlurView
-              intensity={intensity}
-              tint={tint}
-              style={[styles.overflowBlurFill, { backgroundColor: surfCol }]}
-            />
+      <View style={[styles.wrapper, glowStyle, style]} pointerEvents="box-none">
+        <View
+          style={[
+            styles.overflowShell,
+            { borderColor: borderCol },
+            frostOnNative ? styles.overflowShellNativeFrost : null,
+          ]}
+          pointerEvents="box-none"
+        >
+          {/* iOS BlurView in a content-sized overlay paints a dark strip — tint the
+              hero instead, so the nebula shows through as matte glass. */}
+          <View
+            style={[
+              styles.overflowBackdropClip,
+              measured
+                ? { width: backdropSize.width, height: backdropSize.height }
+                : styles.overflowBackdropFallback,
+            ]}
+            pointerEvents="none"
+          >
+            {frostOnNative ? (
+              <View style={[styles.overflowBlurFill, { backgroundColor: surfCol }]} />
+            ) : (
+              <BlurView
+                intensity={intensity}
+                tint={tint}
+                style={[styles.overflowBlurFill, { backgroundColor: surfCol }]}
+              />
+            )}
             <View style={[styles.bgOverlay, { backgroundColor: overCol }]} pointerEvents="none" />
           </View>
-          <View style={styles.overflowForeground}>{children}</View>
+          <View
+            style={styles.overflowForeground}
+            pointerEvents="box-none"
+            onLayout={(event) => {
+              const { width, height } = event.nativeEvent.layout;
+              setBackdropSize((prev) =>
+                prev.width === width && prev.height === height
+                  ? prev
+                  : { width, height },
+              );
+            }}
+          >
+            {children}
+          </View>
         </View>
       </View>
     );
   }
 
   return (
-    <View style={[styles.wrapper, glowStyle, style]}>
+    <View style={[styles.wrapper, glowStyle, style]} pointerEvents="box-none">
       <BlurView
         intensity={intensity}
         tint={tint}
+        blurMethod="dimezisBlurView"
+        pointerEvents="box-none"
         style={[
           styles.inner,
           {
             borderColor: borderCol,
-            backgroundColor: surfCol,
+            // Fill on UIVisualEffectView kills iOS frost; keep the wash in the overlay.
+            backgroundColor: Platform.OS === "ios" ? "transparent" : surfCol,
           },
         ]}
       >
-        <View style={[styles.bgOverlay, { backgroundColor: overCol }]} />
+        <View style={[styles.bgOverlay, { backgroundColor: overCol }]} pointerEvents="none" />
         {children}
       </BlurView>
     </View>
@@ -100,19 +139,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: "visible",
   },
+  overflowShellNativeFrost: {
+    backgroundColor: "rgba(20, 18, 28, 0.42)",
+  },
   overflowBackdropClip: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    left: 0,
     borderRadius: theme.radius.lg,
     overflow: "hidden",
   },
+  overflowBackdropFallback: {
+    right: 0,
+    bottom: 0,
+  },
   overflowBlurFill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   overflowForeground: {
     overflow: "visible",
   },
   bgOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   glowGold: {
     ...theme.shadows.glowGold,

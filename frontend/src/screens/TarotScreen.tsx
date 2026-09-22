@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  ImageBackground,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -11,18 +12,19 @@ import {
   TextInput,
   useWindowDimensions,
   View,
-  type GestureResponderEvent,
-  type ImageSourcePropType,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  type PanResponderGestureState,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import {
+  Gesture,
+  GestureDetector,
+  ScrollView as GestureScrollView,
+} from "react-native-gesture-handler";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { Image } from "expo-image";
 import Animated, {
   Easing,
   FadeIn,
@@ -35,6 +37,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
+import { useRouter, useScrollToTop } from "expo-router";
 import * as Haptics from "expo-haptics";
 import {
   Layers,
@@ -43,31 +46,64 @@ import {
   Sparkles,
   ArrowLeft,
   ChevronDown,
+  Check,
+  ArrowRight,
+  RefreshCw,
+  Share,
 } from "lucide-react-native";
 import { theme } from "../theme";
 import CosmicBackground from "../components/CosmicBackground";
 import GlassCard from "../components/GlassCard";
+import ScreenHeading from "../components/ScreenHeading";
 import TarotCard from "../components/TarotCard";
-import { TAROT_DECK, TarotCard as TarotCardType } from "../data/tarotCards";
+import { TAROT_DECK } from "../data/tarotCards";
+import {
+  OrientedTarotCard,
+  cardDetailed,
+  cardShort,
+  cardTitleRu,
+  withOrientation,
+} from "../data/tarotOrientation";
 import {
   DEFAULT_SPREAD_ID,
-  TAROT_SPREADS,
   TarotSpread,
-  getSpreadById,
+  historicalSpreadFallback,
 } from "../data/tarotSpreads";
 import { buildTarotSummaryRu } from "../data/tarotReadingSummary";
-import { TarotCardSnapshot, useHistory } from "../context/HistoryContext";
+import { getCardReading } from "../data/tarotReadings";
+import {
+  HistoryItem,
+  TarotCardSnapshot,
+  useHistory,
+} from "../context/HistoryContext";
+import { useUser } from "../context/UserContext";
+import { useTarotSpreads } from "../context/TarotSpreadsContext";
+import ProModal from "../components/profile/ProModal";
+import RemainPill from "../components/RemainPill";
+import ShareSpreadPoster from "../components/ShareSpreadPoster";
+import { SHARE_POSTER_H, SHARE_POSTER_W } from "../components/ShareCardPoster";
+import {
+  canOpenTarotInterpret,
+  getTarotInterpretQuota,
+} from "../services/tarotChat";
+import { shareViewAsImage } from "../services/sharePoster";
 
 type FlowPhase = "select" | "picking" | "reveal" | "reading";
 
-/** «выбери 3 карты» — склонение числа для подсказки у колоды */
+/** «выберите 3 карты» — склонение числа для подсказки у колоды */
 function chooseCardsPhraseRu(n: number): string {
   const mod10 = n % 10;
   const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return `выбери ${n} карту`;
+  if (mod10 === 1 && mod100 !== 11) return `нажмите или вытяните ${n} карту`;
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14))
-    return `выбери ${n} карты`;
-  return `выбери ${n} карт`;
+    return `нажмите или вытяните ${n} карты`;
+  return `нажмите или вытяните ${n} карт`;
+}
+
+function cardCountLabelRu(n: number): string {
+  if (n === 1) return "1 карта";
+  if (n >= 2 && n <= 4) return `${n} карты`;
+  return `${n} карт`;
 }
 
 function PickCardsDeckHint({ count }: { count: number }) {
@@ -118,25 +154,32 @@ const FAN_POOL_SIZE = Math.min(28, TAROT_DECK.length);
 /** Horizontal padding inside deck strip content (matches `deckStripContent`). */
 const DECK_CONTENT_PAD_X = 24;
 
-function shuffleFan(count: number = FAN_POOL_SIZE): TarotCardType[] {
+function shuffleFan(count: number = FAN_POOL_SIZE): OrientedTarotCard[] {
   const arr = [...TAROT_DECK];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return arr.slice(0, count);
+  return arr.slice(0, count).map((card) => withOrientation(card));
 }
 
-const SPREAD_BG_IMAGES: Record<string, ImageSourcePropType> = {
-  "one-card": require("../../assets/tarot/bg/bgi1.png"),
-  "three-time": require("../../assets/tarot/bg/bgi2.png"),
-  "three-situation": require("../../assets/tarot/bg/bgi3.png"),
-  "love-three": require("../../assets/tarot/bg/sprd-love.png"),
-  "thoughts": require("../../assets/tarot/bg/sprd-thoughts2.png"),
-  "choice": require("../../assets/tarot/bg/sprd-2ways.png"),
-  "career-growth": require("../../assets/tarot/bg/sprd-career2.png"),
-  "where-money": require("../../assets/tarot/bg/sprd-riches.png"),
-};
+function cardsFromHistoryItem(item: HistoryItem): (OrientedTarotCard | null)[] {
+  if (item.cardsSnapshot && item.cardsSnapshot.length > 0) {
+    return item.cardsSnapshot.map((snap) => {
+      const card = TAROT_DECK.find((c) => c.id === snap.cardId);
+      if (!card) return null;
+      return withOrientation(card, snap.reversed === true);
+    });
+  }
+  if (item.cardId) {
+    const card = TAROT_DECK.find((c) => c.id === item.cardId);
+    if (!card) return [null];
+    return [withOrientation(card, item.cardReversed === true)];
+  }
+  return [];
+}
+
+const DEFAULT_SPREAD_BG = require("../../assets/tarot/bg/bgi1.jpg");
 
 function SchemeSilhouette({
   active,
@@ -177,11 +220,49 @@ function SpreadSchemePreview({
     compactScheme ? styles.schemePanelCompact : styles.schemePanelRoomy,
   ];
 
-  if (spread.id === "one-card") {
+  if (spread.drawCount === 1) {
     return (
       <View style={panelStyle} pointerEvents="none">
         <View style={styles.schemeSingleWrap}>
           <SchemeSilhouette active={active} style={silhouetteStyle} />
+        </View>
+      </View>
+    );
+  }
+
+  if (spread.drawCount === 2) {
+    return (
+      <View style={panelStyle} pointerEvents="none">
+        <View style={styles.schemeRowThree}>
+          <SchemeSilhouette active={active} rotate="-4deg" style={[styles.schemeRowCardLeft, silhouetteStyle]} />
+          <SchemeSilhouette active={active} rotate="4deg" style={[styles.schemeRowCardRight, silhouetteStyle]} />
+        </View>
+      </View>
+    );
+  }
+
+  if (spread.drawCount === 4) {
+    return (
+      <View style={panelStyle} pointerEvents="none">
+        <View style={[styles.schemeRowThree, { flexWrap: "wrap", width: 100, gap: 6 }]}>
+          <SchemeSilhouette active={active} style={silhouetteStyle} />
+          <SchemeSilhouette active={active} style={silhouetteStyle} />
+          <SchemeSilhouette active={active} style={silhouetteStyle} />
+          <SchemeSilhouette active={active} style={silhouetteStyle} />
+        </View>
+      </View>
+    );
+  }
+
+  if (spread.drawCount === 5) {
+    return (
+      <View style={panelStyle} pointerEvents="none">
+        <View style={[styles.schemeRowThree, { flexWrap: "wrap", width: 140, gap: 6 }]}>
+          <SchemeSilhouette active={active} style={silhouetteStyle} />
+          <SchemeSilhouette active={active} style={silhouetteStyle} />
+          <SchemeSilhouette active={active} style={silhouetteStyle} />
+          <SchemeSilhouette active={active} style={silhouetteStyle} />
+          <SchemeSilhouette active={active} style={[silhouetteStyle, { marginTop: -4 }]} />
         </View>
       </View>
     );
@@ -212,32 +293,51 @@ function SpreadSchemePreview({
 type TarotScreenProps = {
   /** When true, top safe area is handled by the parent (e.g. Gadania segment header). */
   embedded?: boolean;
+  /** When set, restore this diary entry into the reading view. */
+  historyId?: string;
 };
 
 type Rect = { x: number; y: number; width: number; height: number };
 
 type PickFlight = {
-  card: TarotCardType;
+  card: OrientedTarotCard;
   width: number;
   height: number;
   hideFrontText: boolean;
 };
 
-export default function TarotScreen({ embedded = false }: TarotScreenProps) {
+export default function TarotScreen({
+  embedded = false,
+  historyId,
+}: TarotScreenProps) {
   const { width } = useWindowDimensions();
-  const { addItem } = useHistory();
+  const router = useRouter();
+  const { addItem, updateItem, items, hydrated } = useHistory();
+  const { isPro } = useUser();
+  const { spreads, getSpreadById } = useTarotSpreads();
+  const [proVisible, setProVisible] = useState(false);
   const revealTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const appliedArchiveRef = useRef(false);
+  const [historyItemId, setHistoryItemId] = useState<string | null>(
+    historyId ?? null,
+  );
+  const [archiveTitle, setArchiveTitle] = useState<string | null>(null);
+  const [archiveMissing, setArchiveMissing] = useState(false);
+  const [archiveReady, setArchiveReady] = useState(!historyId);
   const [spreadId, setSpreadId] = useState<TarotSpread["id"]>(DEFAULT_SPREAD_ID);
-  const spread = useMemo(() => getSpreadById(spreadId), [spreadId]);
+  const spread = useMemo(
+    () => getSpreadById(spreadId),
+    [getSpreadById, spreadId],
+  );
 
   const [flowPhase, setFlowPhase] = useState<FlowPhase>("select");
   const [readingSummaryRu, setReadingSummaryRu] = useState<string | null>(
     null,
   );
 
-  const [fan, setFan] = useState<TarotCardType[]>(() => shuffleFan());
+  const [fan, setFan] = useState<OrientedTarotCard[]>(() => shuffleFan());
   const [pickedIds, setPickedIds] = useState<string[]>([]);
-  const [slots, setSlots] = useState<(TarotCardType | null)[]>(() =>
+  const [slots, setSlots] = useState<(OrientedTarotCard | null)[]>(() =>
     Array(spread.drawCount).fill(null),
   );
   const [revealedSlots, setRevealedSlots] = useState<boolean[]>(() =>
@@ -246,7 +346,9 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
 
   const [intuitionOpen, setIntuitionOpen] = useState(false);
   const [intuitionText, setIntuitionText] = useState("");
+  const [previewCard, setPreviewCard] = useState<OrientedTarotCard | null>(null);
   const [savedIntuition, setSavedIntuition] = useState<string>("");
+  const [intuitionJustSaved, setIntuitionJustSaved] = useState(false);
 
   /** Deck strip: scroll-linked fan so the arc is always centered on the viewport. */
   const [deckScrollX, setDeckScrollX] = useState(0);
@@ -254,6 +356,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
   const [deckContentWidth, setDeckContentWidth] = useState(0);
   const rootRef = useRef<View>(null);
   const mainScrollRef = useRef<ScrollView>(null);
+  useScrollToTop(mainScrollRef);
   const deckStripRef = useRef<ScrollView>(null);
   const deckCardRefs = useRef<Record<string, View | null>>({});
   const slotRefs = useRef<Record<number, View | null>>({});
@@ -263,17 +366,67 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
   const pickFlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const intuitionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const dragSourceRectRef = useRef<Rect | null>(null);
-  const draggingCardRef = useRef<TarotCardType | null>(null);
+  const draggingCardRef = useRef<OrientedTarotCard | null>(null);
+  const dragTranslationRef = useRef({ x: 0, y: 0 });
   const [pickFlight, setPickFlight] = useState<PickFlight | null>(null);
   const flightX = useSharedValue(0);
   const flightY = useSharedValue(0);
   const flightScale = useSharedValue(1);
   const flightOpacity = useSharedValue(0);
+  const sharePosterRef = useRef<View>(null);
+  const shareImageReadyRef = useRef(false);
+  const [sharing, setSharing] = useState(false);
 
   const drawCount = spread.drawCount;
   const nextSlotIndex = slots.findIndex((s) => s === null);
   const allPicked = nextSlotIndex === -1;
+
+  const availableW = width - 56;
+  const cardsPerRow =
+    drawCount === 4 || drawCount === 2 ? 2 : drawCount >= 3 ? 3 : 1;
+  const gapSum = cardsPerRow === 3 ? 16 : cardsPerRow === 2 ? 32 : 0;
+  const dynamicCardWidth = Math.min(118, (availableW - gapSum) / cardsPerRow);
+  const compactSlots = drawCount >= 4 && flowPhase !== "reading";
+  const compactGap = 8;
+  const compactCardWidth = Math.min(
+    drawCount === 4 ? 72 : 62,
+    (availableW - compactGap * (drawCount - 1)) / drawCount,
+  );
+  const denseResult = drawCount >= 4 && flowPhase === "reading";
+  const fiveCardResult = drawCount === 5 && flowPhase === "reading";
+  const fourCardResult = drawCount === 4 && flowPhase === "reading";
+  const threeCardLayout = drawCount === 3;
+  const denseResultCardWidth = drawCount === 5 ? 82 : 88;
+  const slotCardWidth = compactSlots
+    ? compactCardWidth
+    : denseResult
+      ? denseResultCardWidth
+      : dynamicCardWidth;
+  const slotCardHeight = slotCardWidth * (182 / 118);
+  const crossCellWidth = 96;
+  const crossAreaWidth = width - 48;
+  const crossCenterLeft = (crossAreaWidth - crossCellWidth) / 2;
+
+  const fiveCardSlotStyle = (index: number): ViewStyle => {
+    if (!fiveCardResult) return {};
+    if (index === 0) {
+      return { position: "absolute", top: 0, left: 0 };
+    }
+    if (index === 1) {
+      return { position: "absolute", top: 0, right: 0 };
+    }
+    if (index === 2) {
+      return { position: "absolute", top: 112, left: crossCenterLeft };
+    }
+    if (index === 3) {
+      return { position: "absolute", top: 224, left: 0 };
+    }
+    return { position: "absolute", top: 224, right: 0 };
+  };
 
   const clearRevealTimers = useCallback(() => {
     revealTimeoutsRef.current.forEach((timerId) => clearTimeout(timerId));
@@ -283,6 +436,9 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
   useEffect(() => {
     return () => {
       clearRevealTimers();
+      if (intuitionSaveTimerRef.current) {
+        clearTimeout(intuitionSaveTimerRef.current);
+      }
     };
   }, [clearRevealTimers]);
 
@@ -299,10 +455,62 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
       setIntuitionOpen(false);
       setIntuitionText("");
       setSavedIntuition("");
+      setIntuitionJustSaved(false);
       setReadingSummaryRu(null);
+      setHistoryItemId(null);
+      setArchiveTitle(null);
     },
-    [clearRevealTimers],
+    [clearRevealTimers, getSpreadById],
   );
+
+  useEffect(() => {
+    if (!historyId || !hydrated || appliedArchiveRef.current) return;
+    appliedArchiveRef.current = true;
+    const item = items.find((it) => it.id === historyId && it.type === "tarot");
+    if (!item) {
+      setArchiveMissing(true);
+      setArchiveReady(true);
+      return;
+    }
+
+    const cards = cardsFromHistoryItem(item);
+    const requestedSpreadId =
+      item.spread ?? (cards.length <= 1 ? "one-card" : "three-situation");
+    const catalogSpread = getSpreadById(requestedSpreadId);
+    const historicalSpread = item.cardsSnapshot?.length
+      ? historicalSpreadFallback(
+          requestedSpreadId === "three-card"
+            ? "three-situation"
+            : requestedSpreadId,
+          item.spreadLabelRu || item.question || catalogSpread.titleRu,
+          item.cardsSnapshot.map((snapshot, index) => ({
+            id:
+              snapshot.positionId ||
+              catalogSpread.positions[index]?.id ||
+              `position-${index + 1}`,
+            labelRu:
+              snapshot.positionLabelRu ||
+              catalogSpread.positions[index]?.labelRu ||
+              `Карта ${index + 1}`,
+          })),
+        )
+      : null;
+    const nextSpread = historicalSpread ?? catalogSpread;
+    const nextSlots = nextSpread.positions.map((_, i) => cards[i] ?? null);
+    const note = item.userInterpretation?.trim() ?? "";
+
+    setSpreadId(nextSpread.id);
+    setSlots(nextSlots);
+    setRevealedSlots(nextSlots.map((card) => card != null));
+    setPickedIds(nextSlots.filter((card): card is OrientedTarotCard => card != null).map((c) => c.id));
+    setFlowPhase("reading");
+    setReadingSummaryRu(item.tarotSummaryRu ?? null);
+    setSavedIntuition(note);
+    setIntuitionText(note);
+    setHistoryItemId(item.id);
+    setArchiveTitle(item.spreadLabelRu || item.question || nextSpread.titleRu);
+    setArchiveReady(true);
+  }, [getSpreadById, historyId, hydrated, items]);
 
   /** Tap a spread card → select spread, shuffle fan, go straight to picking. */
   const handleSelectSpreadAndStart = (id: TarotSpread["id"]) => {
@@ -322,16 +530,22 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
   /** Возврат к списку раскладов (как «Новый расклад»). */
   const goBackToSelect = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
+    if (historyId) {
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/diary");
+      return;
+    }
     resetSession(spread);
-  }, [resetSession, spread]);
+  }, [historyId, resetSession, router, spread]);
 
   const commitHistory = useCallback(
-    (filledSlots: TarotCardType[], summaryRu: string) => {
+    (filledSlots: OrientedTarotCard[], summaryRu: string) => {
       const snapshot: TarotCardSnapshot[] = filledSlots.map((c, i) => ({
         positionId: spread.positions[i].id,
         positionLabelRu: spread.positions[i].labelRu,
         cardId: c.id,
-        cardName: c.nameRu,
+        cardName: cardTitleRu(c, c.reversed),
+        reversed: c.reversed,
       }));
 
       let question: string;
@@ -340,31 +554,33 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
       if (drawCount === 1) {
         const c = filledSlots[0];
         question = spread.titleRu;
-        answer = `${c.nameRu} — ${c.short}`;
+        answer = `${cardTitleRu(c, c.reversed)} — ${cardShort(c, c.reversed)}`;
       } else {
         question = spread.titleRu;
         answer = filledSlots
-          .map((c, i) => `${spread.positions[i].labelRu}: ${c.nameRu}`)
+          .map((c, i) => `${spread.positions[i].labelRu}: ${cardTitleRu(c, c.reversed)}`)
           .join(" · ");
       }
 
-      addItem({
+      const id = addItem({
         type: "tarot",
         question,
         answer,
         cardId: drawCount === 1 ? filledSlots[0].id : undefined,
-        cardName: drawCount === 1 ? filledSlots[0].nameRu : undefined,
+        cardName: drawCount === 1 ? cardTitleRu(filledSlots[0], filledSlots[0].reversed) : undefined,
+        cardReversed: drawCount === 1 ? filledSlots[0].reversed : undefined,
         spread: spread.id,
         spreadLabelRu: spread.titleRu,
         cardsSnapshot: snapshot,
         tarotSummaryRu: summaryRu,
       });
+      setHistoryItemId(id);
     },
     [addItem, spread, drawCount],
   );
 
   const startAutoReveal = useCallback(
-    (filledSlots: TarotCardType[]) => {
+    (filledSlots: OrientedTarotCard[]) => {
       clearRevealTimers();
       setRevealedSlots(Array(drawCount).fill(false));
       setFlowPhase("reveal");
@@ -422,7 +638,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
   );
 
   const commitPickedCard = useCallback(
-    (card: TarotCardType, idx: number) => {
+    (card: OrientedTarotCard, idx: number) => {
       const nextSlots = [...slots];
       nextSlots[idx] = card;
       const nextPickedIds = [...pickedIds, card.id];
@@ -432,7 +648,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
 
       const filledCount = nextSlots.filter(Boolean).length;
       if (filledCount === drawCount) {
-        startAutoReveal(nextSlots as TarotCardType[]);
+        startAutoReveal(nextSlots as OrientedTarotCard[]);
       }
     },
     [drawCount, pickedIds, slots, startAutoReveal],
@@ -445,6 +661,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
     }
     draggingCardRef.current = null;
     dragSourceRectRef.current = null;
+    dragTranslationRef.current = { x: 0, y: 0 };
     isPickAnimatingRef.current = false;
     flightOpacity.value = 0;
     setPickFlight(null);
@@ -452,7 +669,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
 
   const animatePickToSlot = useCallback(
     (
-      card: TarotCardType,
+      card: OrientedTarotCard,
       sourceRect: Rect,
       targetRect: Rect,
       slotIndex: number,
@@ -507,7 +724,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
     ],
   );
 
-  const handlePickCard = useCallback((card: TarotCardType) => {
+  const handlePickCard = useCallback((card: OrientedTarotCard) => {
     if (flowPhase !== "picking") return;
     if (pickedIds.includes(card.id)) return;
     if (allPicked) return;
@@ -544,29 +761,31 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
   ]);
 
   const beginDragCard = useCallback(
-    (card: TarotCardType) => {
+    (card: OrientedTarotCard) => {
       if (flowPhase !== "picking") return;
       if (pickedIds.includes(card.id) || allPicked) return;
       if (isPickAnimatingRef.current) return;
 
       const sourceNode = deckCardRefs.current[card.id];
       isPickAnimatingRef.current = true;
+      draggingCardRef.current = card;
+      dragTranslationRef.current = { x: 0, y: 0 };
 
       measureRelativeToRoot(sourceNode, (sourceRect) => {
-        if (!sourceRect) {
+        if (!sourceRect || draggingCardRef.current?.id !== card.id) {
           resetPickFlight();
           return;
         }
-        draggingCardRef.current = card;
         dragSourceRectRef.current = sourceRect;
+        const translation = dragTranslationRef.current;
         setPickFlight({
           card,
           width: sourceRect.width,
           height: sourceRect.height,
           hideFrontText: drawCount > 1,
         });
-        flightX.value = sourceRect.x;
-        flightY.value = sourceRect.y;
+        flightX.value = sourceRect.x + translation.x;
+        flightY.value = sourceRect.y + translation.y;
         flightScale.value = 1.06;
         flightOpacity.value = 1;
       });
@@ -586,30 +805,43 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
   );
 
   const updateDraggedCard = useCallback(
-    (_event: GestureResponderEvent, gesture: PanResponderGestureState) => {
+    (translationX: number, translationY: number) => {
+      dragTranslationRef.current = { x: translationX, y: translationY };
       const sourceRect = dragSourceRectRef.current;
       if (!sourceRect || !draggingCardRef.current) return;
-      flightX.value = sourceRect.x + gesture.dx;
-      flightY.value = sourceRect.y + gesture.dy;
+      flightX.value = sourceRect.x + translationX;
+      flightY.value = sourceRect.y + translationY;
       flightScale.value = 1.07;
     },
     [flightScale, flightX, flightY],
   );
 
   const finishDraggedCard = useCallback(
-    (_event: GestureResponderEvent, gesture: PanResponderGestureState) => {
+    (translationX: number, translationY: number) => {
+      dragTranslationRef.current = { x: translationX, y: translationY };
       const card = draggingCardRef.current;
       const sourceRect = dragSourceRectRef.current;
       const idx = slots.findIndex((s) => s === null);
-      if (!card || !sourceRect || idx === -1) {
+      if (!card || idx === -1) {
+        resetPickFlight();
+        return;
+      }
+
+      // A very quick pull can finish before native measurement returns.
+      // It is still an intentional draw, so accept it without the flight animation.
+      if (!sourceRect) {
+        if (translationY < -32) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+          commitPickedCard(card, idx);
+        }
         resetPickFlight();
         return;
       }
 
       const currentRect = {
         ...sourceRect,
-        x: sourceRect.x + gesture.dx,
-        y: sourceRect.y + gesture.dy,
+        x: sourceRect.x + translationX,
+        y: sourceRect.y + translationY,
       };
       const targetNode = slotRefs.current[idx];
 
@@ -626,7 +858,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
           centerX <= targetRect.x + targetRect.width + 64 &&
           centerY >= targetRect.y - 80 &&
           centerY <= targetRect.y + targetRect.height + 80;
-        const pulledFromDeck = gesture.dy < -54;
+        const pulledFromDeck = translationY < -54;
 
         if (releasedNearSlot || pulledFromDeck) {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
@@ -658,6 +890,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
     },
     [
       animatePickToSlot,
+      commitPickedCard,
       flightOpacity,
       flightScale,
       flightX,
@@ -668,27 +901,34 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
     ],
   );
 
-  const makeDeckCardPanHandlers = useCallback(
-    (card: TarotCardType) =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onStartShouldSetPanResponderCapture: () => false,
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          flowPhase === "picking" &&
-          gesture.dy < -4 &&
-          Math.abs(gesture.dy) > Math.abs(gesture.dx) * 0.7,
-        onMoveShouldSetPanResponderCapture: (_event, gesture) =>
-          flowPhase === "picking" &&
-          gesture.dy < -4 &&
-          Math.abs(gesture.dy) > Math.abs(gesture.dx) * 0.7,
-        onPanResponderGrant: () => beginDragCard(card),
-        onPanResponderMove: updateDraggedCard,
-        onPanResponderRelease: finishDraggedCard,
-        onPanResponderTerminate: finishDraggedCard,
-        onPanResponderTerminationRequest: () => false,
-        onShouldBlockNativeResponder: () => true,
-      }).panHandlers,
-    [beginDragCard, finishDraggedCard, flowPhase, updateDraggedCard],
+  const makeDeckCardDragGesture = useCallback(
+    (card: OrientedTarotCard) =>
+      Gesture.Pan()
+        .enabled(flowPhase === "picking")
+        .runOnJS(true)
+        // Horizontal movement remains available to the deck ScrollView.
+        .activeOffsetY(-8)
+        .failOffsetX([-24, 24])
+        .onStart(() => beginDragCard(card))
+        .onUpdate((event) =>
+          updateDraggedCard(event.translationX, event.translationY),
+        )
+        .onFinalize((event, success) => {
+          if (success) {
+            finishDraggedCard(event.translationX, event.translationY);
+          } else if (draggingCardRef.current?.id === card.id) {
+            // Clean up only a drag that had actually activated. A normal tap
+            // also finalizes the pan recognizer with `success = false`.
+            resetPickFlight();
+          }
+        }),
+    [
+      beginDragCard,
+      finishDraggedCard,
+      flowPhase,
+      resetPickFlight,
+      updateDraggedCard,
+    ],
   );
 
   const pickFlightStyle = useAnimatedStyle(() => ({
@@ -712,11 +952,32 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
   };
 
   const saveIntuition = () => {
-    setSavedIntuition(intuitionText.trim());
-    setIntuitionOpen(false);
+    if (intuitionJustSaved) return;
+    const text = intuitionText.trim();
+    setSavedIntuition(text);
+    if (historyItemId) {
+      updateItem(historyItemId, {
+        userInterpretation: text.length > 0 ? text : undefined,
+      });
+    }
+    setIntuitionJustSaved(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
       () => {},
     );
+    if (intuitionSaveTimerRef.current) {
+      clearTimeout(intuitionSaveTimerRef.current);
+    }
+    intuitionSaveTimerRef.current = setTimeout(() => {
+      setIntuitionOpen(false);
+      setIntuitionJustSaved(false);
+      intuitionSaveTimerRef.current = null;
+    }, 650);
+  };
+
+  const closeIntuitionModal = () => {
+    setIntuitionText(savedIntuition);
+    setIntuitionJustSaved(false);
+    setIntuitionOpen(false);
   };
 
   const subtitle = useMemo(() => {
@@ -724,7 +985,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
       case "select":
         return "Расклады на любые случаи жизни";
       case "picking":
-        return `Выбрано ${pickedIds.length} из ${drawCount} · листай колоду`;
+        return `Выбрано ${pickedIds.length} из ${drawCount} · листайте колоду`;
       case "reveal":
         return "";
       case "reading":
@@ -802,20 +1063,171 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
     return { fanCardW, fanCardH, fanStep, viewportCenterX };
   }, [drawCount, deckScrollX, deckViewportW, width]);
 
-  const intuitionModalSubtitle =
-    drawCount === 1
-      ? "Запиши свои первые мысли, прежде чем читать толкование."
-      : "Запиши ощущения от всего расклада, прежде чем читать трактовку.";
 
   const pickingOrRevealOrReading =
     flowPhase === "picking" ||
     flowPhase === "reveal" ||
     flowPhase === "reading";
   const compactSpreadCards = width < 370;
+  const viewingArchive = Boolean(historyId);
+  const currentHistoryItem = useMemo(
+    () => items.find((it) => it.id === historyItemId && it.type === "tarot"),
+    [historyItemId, items],
+  );
+  const chatStarted = Boolean(currentHistoryItem?.tarotChat?.conversationId);
+  const interpretQuota = useMemo(
+    () => getTarotInterpretQuota({ isPro, items }),
+    [isPro, items],
+  );
+  const shareSlots = useMemo(
+    () =>
+      spread.positions
+        .map((pos, i) => {
+          const card = slots[i];
+          if (!card) return null;
+          return { card, positionLabelRu: pos.labelRu, reversed: card.reversed };
+        })
+        .filter(
+          (slot): slot is {
+            card: OrientedTarotCard;
+            positionLabelRu: string;
+            reversed: boolean;
+          } => slot != null,
+        ),
+    [slots, spread.positions],
+  );
+  const shareCaption = useMemo(() => {
+    if (shareSlots.length === 0) return undefined;
+    if (shareSlots.length === 1) {
+      const slot = shareSlots[0];
+      return getCardReading(slot.card, slot.reversed).quote;
+    }
+    return shareSlots
+      .map(
+        (slot) =>
+          `${slot.positionLabelRu}: ${cardTitleRu(slot.card, slot.reversed)}`,
+      )
+      .join(" · ");
+  }, [shareSlots]);
+  const sharePosterKey = shareSlots
+    .map((slot) => `${slot.card.id}:${slot.reversed ? "r" : "u"}`)
+    .join("-");
+
+  useEffect(() => {
+    shareImageReadyRef.current = false;
+  }, [sharePosterKey]);
+
+  const handleShareSpread = useCallback(async () => {
+    if (shareSlots.length === 0 || sharing) return;
+    const fallback =
+      shareSlots.length === 1
+        ? `Мой расклад «${spread.titleRu}»: ${cardTitleRu(shareSlots[0].card, shareSlots[0].reversed)}\n«${shareCaption ?? cardShort(shareSlots[0].card, shareSlots[0].reversed)}»`
+        : `Мой расклад «${spread.titleRu}»: ${shareCaption}`;
+    setSharing(true);
+    Haptics.selectionAsync().catch(() => {});
+    try {
+      await shareViewAsImage(
+        sharePosterRef,
+        fallback,
+        () => shareImageReadyRef.current,
+        "Поделиться раскладом",
+      );
+    } catch {
+      // ignore cancel
+    } finally {
+      setSharing(false);
+    }
+  }, [shareCaption, shareSlots, sharing, spread.titleRu]);
+
+  const openTarotChat = useCallback(() => {
+    if (!historyItemId) return;
+    const allowed = canOpenTarotInterpret({
+      isPro,
+      items,
+      chatAlreadyStarted: chatStarted,
+    });
+    if (!allowed) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(
+        () => {},
+      );
+      setProVisible(true);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+      () => {},
+    );
+    router.push(
+      `/tarot-chat?id=${encodeURIComponent(historyItemId)}` as never,
+    );
+  }, [chatStarted, historyItemId, isPro, items, router]);
+  const intuitionSaved = savedIntuition.length > 0;
+  const modalShowsSaved =
+    intuitionJustSaved ||
+    (intuitionSaved && intuitionText.trim() === savedIntuition);
+
+  if (viewingArchive && !archiveReady) {
+    return (
+      <View style={styles.root}>
+        <CosmicBackground variant="tarot" />
+      </View>
+    );
+  }
+
+  if (viewingArchive && archiveMissing) {
+    return (
+      <View style={styles.root}>
+        <CosmicBackground variant="tarot" />
+        <SafeAreaView
+          style={styles.safe}
+          edges={embedded ? ["bottom"] : ["top"]}
+        >
+          <View style={styles.topBackBar} pointerEvents="box-none">
+            <Pressable
+              onPress={goBackToSelect}
+              testID="tarot-top-back"
+              accessibilityRole="button"
+              accessibilityLabel="Назад"
+              style={({ pressed }) => [
+                styles.topBackRow,
+                pressed && { opacity: 0.82 },
+              ]}
+            >
+              <ArrowLeft color={theme.colors.textDim} size={20} />
+              <Text style={styles.topBackLabel}>Назад</Text>
+            </Pressable>
+          </View>
+          <View style={styles.archiveEmpty}>
+            <Text style={styles.archiveEmptyTitle}>Расклад не найден</Text>
+            <Text style={styles.archiveEmptyText}>
+              Эта запись больше не сохранена в дневнике.
+            </Text>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
-    <View ref={rootRef} style={styles.root}>
-      <CosmicBackground />
+    <View
+      ref={rootRef}
+      style={[styles.root, embedded && styles.rootEmbedded]}
+    >
+      {flowPhase === "reading" && shareSlots.length > 0 ? (
+        <View style={styles.shareOffscreen} pointerEvents="none">
+          <ShareSpreadPoster
+            key={sharePosterKey}
+            ref={sharePosterRef}
+            spreadTitleRu={spread.titleRu}
+            slots={shareSlots}
+            caption={shareCaption}
+            onImageReady={() => {
+              shareImageReadyRef.current = true;
+            }}
+          />
+        </View>
+      ) : null}
+      {/* When embedded, the Гадания shell paints the backdrop so it also spans the segment header. */}
+      {embedded ? null : <CosmicBackground variant="tarot" />}
       <SafeAreaView
         style={styles.safe}
         edges={embedded ? ["bottom"] : ["top"]}
@@ -830,14 +1242,16 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                 onPress={goBackToSelect}
                 testID="tarot-top-back"
                 accessibilityRole="button"
-                accessibilityLabel="К выбору расклада"
+                accessibilityLabel={viewingArchive ? "Назад" : "К выбору расклада"}
                 style={({ pressed }) => [
                   styles.topBackRow,
                   pressed && { opacity: 0.82 },
                 ]}
               >
                 <ArrowLeft color={theme.colors.textDim} size={20} />
-                <Text style={styles.topBackLabel}>К раскладам</Text>
+                <Text style={styles.topBackLabel}>
+                  {viewingArchive ? "Назад" : "К раскладам"}
+                </Text>
               </Pressable>
             </View>
           ) : null}
@@ -855,82 +1269,91 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
             keyboardShouldPersistTaps="handled"
             automaticallyAdjustKeyboardInsets
           >
-          <View style={styles.heroCopy}>
-            <View style={styles.heroDivider}>
-              <View style={styles.heroDividerLine} />
-              <Text style={styles.heroDividerStar}>✦</Text>
-              <View style={styles.heroDividerLine} />
-            </View>
-            <Text style={styles.title}>
-              {flowPhase === "select" ? "Таро" : spread.titleRu}
-            </Text>
-            {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-          </View>
+          <ScreenHeading
+            title={
+              flowPhase === "select"
+                ? "Таро"
+                : archiveTitle ?? spread.titleRu
+            }
+            deck={subtitle || undefined}
+            size={flowPhase !== "select" ? "md" : "lg"}
+            titleStyle={flowPhase !== "select" ? styles.titleReading : undefined}
+            style={styles.heroCopy}
+          />
 
           {/* ——— Select spread ——— */}
           {flowPhase === "select" && (
             <Animated.View entering={FadeIn.duration(380)}>
               {/* <View style={styles.selectIntro}>
-                <Text style={styles.selectIntroTitle}>Выбери форму расклада</Text>
+                <Text style={styles.selectIntroTitle}>Выберите форму расклада</Text>
                 <Text style={styles.selectIntroText}>
-                  Схема на карточке — позиции расклада. Коснись карточки, чтобы
+                  Схема на карточке — позиции расклада. Коснитесь карточки, чтобы
                   сразу перейти к выбору карт.
                 </Text>
               </View> */}
 
               <View style={styles.spreadPickerCol} testID="spread-picker">
-                {TAROT_SPREADS.map((s) => {
-                  const spreadBg =
-                    SPREAD_BG_IMAGES[s.id] ?? SPREAD_BG_IMAGES["one-card"];
+                {spreads.map((s) => {
+                  const spreadBg = s.coverUrl
+                    ? { uri: s.coverUrl }
+                    : DEFAULT_SPREAD_BG;
                   return (
                     <Pressable
                       key={s.id}
                       onPress={() => handleSelectSpreadAndStart(s.id)}
                       testID={`spread-chip-${s.id}`}
                       style={({ pressed }) => [
-                        styles.spreadOption,
-                        compactSpreadCards && styles.spreadOptionCompact,
                         pressed && { transform: [{ scale: 0.985 }] },
                       ]}
                     >
-                      <Image
+                      <ImageBackground
                         source={spreadBg}
-                        style={styles.spreadOptionBgImage}
-                        contentFit="cover"
-                        transition={220}
-                      />
-                      <View style={styles.spreadOptionBgScrim} />
-                      <LinearGradient
-                        colors={[
-                          "rgba(8,6,18,0)",
-                          "rgba(8,6,18,0.38)",
-                          "rgba(8,6,18,0.72)",
+                        style={[
+                          styles.spreadOption,
+                          compactSpreadCards && styles.spreadOptionCompact,
                         ]}
-                        locations={[0, 0.45, 1]}
-                        start={{ x: 0.5, y: 0 }}
-                        end={{ x: 0.5, y: 1 }}
-                        style={StyleSheet.absoluteFill}
-                        pointerEvents="none"
-                      />
-                      <View style={styles.spreadOptionTop}>
-                        <View style={styles.spreadIconPill}>
-                          <Sparkles color={theme.colors.gold} size={15} />
+                        imageStyle={styles.spreadOptionBgImage}
+                        resizeMode="cover"
+                      >
+                        <View style={styles.spreadOptionBgScrim} />
+                        <LinearGradient
+                          colors={[
+                            "rgba(8,6,18,0)",
+                            "rgba(8,6,18,0.38)",
+                            "rgba(8,6,18,0.72)",
+                          ]}
+                          locations={[0, 0.45, 1]}
+                          start={{ x: 0.5, y: 0 }}
+                          end={{ x: 0.5, y: 1 }}
+                          style={StyleSheet.absoluteFill}
+                          pointerEvents="none"
+                        />
+                        <View style={styles.spreadOptionTop}>
+                          <View style={styles.spreadIconPill}>
+                            <Sparkles color={theme.colors.gold} size={15} />
+                          </View>
+                          <Text style={styles.spreadOptionBadge}>
+                            {cardCountLabelRu(s.drawCount)}
+                          </Text>
                         </View>
-                        <Text style={styles.spreadOptionBadge}>
-                          {s.drawCount === 1 ? "1 карта" : `${s.drawCount} карты`}
-                        </Text>
-                      </View>
 
-                      <SpreadSchemePreview spread={s} active={false} />
+                        <SpreadSchemePreview spread={s} active={false} />
 
-                      <View style={styles.spreadOptionCopy}>
-                        <Text style={styles.spreadOptionTitle} numberOfLines={2}>
-                          {s.titleRu}
-                        </Text>
-                        <Text style={styles.spreadOptionSubtitle} numberOfLines={2}>
-                          {s.subtitleRu}
-                        </Text>
-                      </View>
+                        <View style={styles.spreadOptionCopy}>
+                          <Text
+                            style={styles.spreadOptionTitle}
+                            numberOfLines={2}
+                          >
+                            {s.titleRu}
+                          </Text>
+                          <Text
+                            style={styles.spreadOptionSubtitle}
+                            numberOfLines={2}
+                          >
+                            {s.subtitleRu}
+                          </Text>
+                        </View>
+                      </ImageBackground>
                     </Pressable>
                   );
                 })}
@@ -940,7 +1363,24 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
 
           {/* Slot row: picking (placeholder / face-down preview of assigned not shown until reveal) */}
           {pickingOrRevealOrReading && drawCount > 1 && (
-            <View style={styles.slotsRow}>
+            <View
+              key={
+                compactSlots
+                  ? "compact-slots"
+                  : fiveCardResult
+                    ? "five-card-result"
+                    : fourCardResult
+                      ? "four-card-result"
+                      : "regular-slots"
+              }
+              style={[
+                styles.slotsRow,
+                compactSlots && styles.slotsRowCompact,
+                threeCardLayout && styles.slotsRowThree,
+                fourCardResult && styles.slotsRowFourResult,
+                fiveCardResult && styles.slotsRowFiveResult,
+              ]}
+            >
               {spread.positions.map((pos, i) => {
                 const slotCard = slots[i];
                 const isNextPick =
@@ -949,24 +1389,59 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                   !!slotCard &&
                   (flowPhase === "reading" ||
                     (flowPhase === "reveal" && revealedSlots[i]));
+                let slotColumnStyle: ViewStyle;
+                if (compactSlots) {
+                  slotColumnStyle = {
+                    flex: 0,
+                    width: slotCardWidth,
+                    minWidth: slotCardWidth,
+                  };
+                } else if (fiveCardResult) {
+                  slotColumnStyle = {
+                    flex: 0,
+                    width: crossCellWidth,
+                    minWidth: crossCellWidth,
+                    ...fiveCardSlotStyle(i),
+                  };
+                } else if (fourCardResult) {
+                  slotColumnStyle = {
+                    flex: 0,
+                    width: "44%",
+                    minWidth: "44%",
+                  };
+                } else if (threeCardLayout) {
+                  slotColumnStyle = {
+                    flex: 0,
+                    width: slotCardWidth,
+                    minWidth: slotCardWidth,
+                  };
+                } else {
+                  slotColumnStyle = {
+                    minWidth:
+                      drawCount === 4 || drawCount === 2 ? "40%" : "30%",
+                  };
+                }
 
                 return (
                   <View
                     key={pos.id}
-                    style={styles.slotCol}
+                    style={[styles.slotCol, slotColumnStyle]}
                     testID={`three-card-slot-${i}`}
                   >
-                    <Text
-                      style={[
-                        styles.slotPositionLabel,
-                        isNextPick && { color: theme.colors.gold },
-                        !slotCard &&
-                          flowPhase === "reveal" && { opacity: 0.45 },
-                      ]}
-                      numberOfLines={2}
-                    >
-                      {pos.labelRu}
-                    </Text>
+                    {!compactSlots ? (
+                      <Text
+                        style={[
+                          styles.slotPositionLabel,
+                          isNextPick && { color: theme.colors.gold },
+                          !slotCard &&
+                            flowPhase === "reveal" && { opacity: 0.45 },
+                          denseResult && styles.slotPositionLabelDense,
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {pos.labelRu}
+                      </Text>
+                    ) : null}
                     <View
                       ref={(node) => {
                         slotRefs.current[i] = node;
@@ -974,15 +1449,14 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                     >
                       <Animated.View
                         entering={FadeInDown.duration(380).springify()}
-                        layout={Layout.springify()}
                       >
                         {flowPhase === "picking" && !slotCard && (
                           <View
                             style={[
                               styles.slotPlaceholder,
                               {
-                                width: MULTI_CARD_WIDTH,
-                                height: MULTI_CARD_HEIGHT,
+                                width: slotCardWidth,
+                                height: slotCardHeight,
                               },
                               isNextPick && styles.slotPlaceholderActive,
                             ]}
@@ -993,9 +1467,10 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                         {flowPhase === "picking" && slotCard && (
                           <TarotCard
                             card={slotCard}
+                            reversed={slotCard.reversed}
                             flipped={false}
-                            width={MULTI_CARD_WIDTH}
-                            height={MULTI_CARD_HEIGHT}
+                            width={slotCardWidth}
+                            height={slotCardHeight}
                             hideFrontText
                           />
                         )}
@@ -1003,21 +1478,35 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                           slotCard && (
                           <TarotCard
                             card={slotCard}
+                            reversed={slotCard.reversed}
                             flipped={
                               flowPhase === "reading" ? true : revealedSlots[i]
                             }
-                            width={MULTI_CARD_WIDTH}
-                            height={MULTI_CARD_HEIGHT}
+                            width={slotCardWidth}
+                            height={slotCardHeight}
                             hideFrontText
+                            onPress={
+                              flowPhase === "reading" || revealedSlots[i]
+                                ? () => setPreviewCard(slotCard)
+                                : undefined
+                            }
                             testID={`reveal-slot-${i}`}
                           />
                         )}
                       </Animated.View>
                     </View>
-                    <View style={styles.slotCardTitleWrap}>
+                    <View
+                      style={[
+                        styles.slotCardTitleWrap,
+                        !showCardNameBelow && styles.slotCardTitleWrapCollapsed,
+                      ]}
+                    >
                       {showCardNameBelow ? (
                         <Text
-                          style={styles.slotCardTitleBelow}
+                          style={[
+                            styles.slotCardTitleBelow,
+                            denseResult && styles.slotCardTitleBelowDense,
+                          ]}
                           numberOfLines={2}
                           testID={`three-card-slot-title-${i}`}
                         >
@@ -1065,6 +1554,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                   ) : (
                     <TarotCard
                       card={slots[0]}
+                      reversed={slots[0].reversed}
                       flipped={false}
                       width={SINGLE_FAN_CARD_WIDTH}
                       height={SINGLE_FAN_CARD_HEIGHT}
@@ -1083,7 +1573,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
           {/* Horizontal deck strip — scroll to browse, tap to pick */}
           {flowPhase === "picking" && (
             <Animated.View entering={FadeIn.duration(400)} style={styles.deckStripOuter}>
-              <ScrollView
+              <GestureScrollView
                 ref={deckStripRef}
                 horizontal
                 nestedScrollEnabled
@@ -1111,15 +1601,17 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                   /** Stable paint order only by strip index — avoids z-order popping when scroll moves the “focus” card (distance-based z used to reshuffle overlaps). Later cards sit above earlier ones at overlaps. */
                   const stackZIndex = idx + 1;
                   return (
+                    <GestureDetector
+                      key={c.id}
+                      gesture={makeDeckCardDragGesture(c)}
+                    >
                     <Pressable
                       ref={(node) => {
                         deckCardRefs.current[c.id] =
                           node as unknown as View | null;
                       }}
-                      key={c.id}
                       onPress={() => handlePickCard(c)}
                       testID={`tarot-card-slot-${idx}`}
-                      {...makeDeckCardPanHandlers(c)}
                       style={[
                         styles.deckCardWrap,
                         {
@@ -1137,15 +1629,17 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                     >
                       <TarotCard
                         card={c}
+                        reversed={c.reversed}
                         flipped={false}
                         width={fanCardW}
                         height={fanCardH}
                         hideFrontText={drawCount > 1}
                       />
                     </Pressable>
+                    </GestureDetector>
                   );
                 })}
-              </ScrollView>
+              </GestureScrollView>
             </Animated.View>
           )}
 
@@ -1157,10 +1651,16 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
             >
               <View style={styles.cardGlow} />
               <TarotCard
-                card={slots[0] as TarotCardType}
+                card={slots[0] as OrientedTarotCard}
+                reversed={(slots[0] as OrientedTarotCard).reversed}
                 flipped={revealedSlots[0]}
                 width={220}
                 height={340}
+                onPress={
+                  revealedSlots[0]
+                    ? () => setPreviewCard(slots[0] as OrientedTarotCard)
+                    : undefined
+                }
                 testID="picked-card"
               />
             </Animated.View>
@@ -1169,29 +1669,119 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
           {/* Reading block */}
           {flowPhase === "reading" && (
             <Animated.View entering={FadeIn.delay(200).duration(450)}>
-              {readingSummaryRu ? (
-                <GlassCard
-                  glow="gold"
-                  borderColor={theme.colors.borderGold}
-                  style={styles.meaningCard}
-                >
-                  <View style={styles.meaningInner}>
-                    <Text style={styles.summaryEyebrow}>ОБЩИЙ ВЫВОД</Text>
-                    <Text style={styles.summaryText}>{readingSummaryRu}</Text>
-                  </View>
-                </GlassCard>
-              ) : null}
 
               {drawCount === 1 && slots[0] && (
                 <View style={styles.readingThumbWrap}>
                   <TarotCard
-                    card={slots[0] as TarotCardType}
+                    card={slots[0] as OrientedTarotCard}
+                    reversed={(slots[0] as OrientedTarotCard).reversed}
                     flipped
                     width={132}
                     height={204}
+                    onPress={() => setPreviewCard(slots[0] as OrientedTarotCard)}
+                    testID="reading-card-thumb"
                   />
+                  <Text
+                    style={[
+                      styles.slotCardTitleBelow,
+                      styles.singleCardTitleBelow,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {(slots[0] as OrientedTarotCard).nameRu}
+                  </Text>
                 </View>
               )}
+
+              <Pressable
+                onPress={openTarotChat}
+                disabled={!historyItemId}
+                testID="tarot-ai-interpret"
+                style={({ pressed }) => [
+                  styles.aiCtaWrap,
+                  pressed &&
+                    historyItemId && {
+                      opacity: 0.88,
+                      transform: [{ scale: 0.98 }],
+                    },
+                  !historyItemId && { opacity: 0.55 },
+                ]}
+              >
+                <LinearGradient
+                  colors={
+                    !chatStarted &&
+                    !interpretQuota.unlimited &&
+                    interpretQuota.remaining === 0
+                      ? theme.gradients.primaryCtaMuted
+                      : theme.gradients.primaryCta
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.aiCtaGradient}
+                >
+                  <View style={styles.aiCtaMain}>
+                    <Text style={styles.aiCtaText}>
+                      {chatStarted ? "Продолжить диалог" : "Истолковать"}
+                    </Text>
+                    <ArrowRight color="#FFF7EA" size={18} strokeWidth={1.2} />
+                  </View>
+                  {!chatStarted && !interpretQuota.unlimited ? (
+                    <RemainPill remaining={interpretQuota.remaining} />
+                  ) : null}
+                </LinearGradient>
+              </Pressable>
+
+              <View style={styles.actionRow}>
+                {viewingArchive ? null : (
+                  <Pressable
+                    onPress={resetSpread}
+                    testID="tarot-reset-btn"
+                    style={({ pressed }) => [
+                      styles.actionCircleBtn,
+                      styles.actionCircleBtnPrimary,
+                      pressed && { transform: [{ scale: 0.94 }] },
+                    ]}
+                  >
+                    <RefreshCw color="#05030D" size={22} strokeWidth={2.5} />
+                  </Pressable>
+                )}
+
+                <Pressable
+                  onPress={handleShareSpread}
+                  disabled={sharing || shareSlots.length === 0}
+                  testID="tarot-share-btn"
+                  style={({ pressed }) => [
+                    styles.actionCircleBtn,
+                    pressed && { opacity: 0.7 },
+                    (sharing || shareSlots.length === 0) && { opacity: 0.55 },
+                  ]}
+                >
+                  {sharing ? (
+                    <ActivityIndicator color={theme.colors.text} size="small" />
+                  ) : (
+                    <Share color={theme.colors.text} size={22} strokeWidth={2} />
+                  )}
+                </Pressable>
+
+                <Pressable
+                  onPress={() => {
+                    setIntuitionText(savedIntuition);
+                    setIntuitionJustSaved(false);
+                    setIntuitionOpen(true);
+                  }}
+                  testID="intuition-open-btn"
+                  style={({ pressed }) => [
+                    styles.actionCircleBtn,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  {intuitionSaved ? (
+                    <Check color={theme.colors.gold} size={22} strokeWidth={2.5} />
+                  ) : (
+                    <PenTool color={theme.colors.text} size={22} strokeWidth={2} />
+                  )}
+                </Pressable>
+              </View>
 
               {drawCount === 1 && slots[0] && (
                 <GlassCard
@@ -1201,20 +1791,26 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                 >
                   <View style={styles.meaningInner}>
                     <Text style={styles.cardName} testID="card-name">
-                      {(slots[0] as TarotCardType).nameRu}
+                      {(slots[0] as OrientedTarotCard).nameRu}
                     </Text>
-                    <Text style={styles.cardLatin}>
-                      {(slots[0] as TarotCardType).name}
-                    </Text>
+                    {(slots[0] as OrientedTarotCard).reversed ? (
+                      <Text style={styles.reversedBadge}>Перевёрнутая</Text>
+                    ) : null}
                     <View style={styles.divider} />
                     <Text style={styles.shortLabel}>Короткое значение</Text>
                     <Text style={styles.shortText} testID="card-short">
-                      {(slots[0] as TarotCardType).short}
+                      {cardShort(
+                        slots[0] as OrientedTarotCard,
+                        (slots[0] as OrientedTarotCard).reversed,
+                      )}
                     </Text>
                     <View style={styles.dividerThin} />
                     <Text style={styles.shortLabel}>Подробное толкование</Text>
                     <Text style={styles.detailedText} testID="card-detailed">
-                      {(slots[0] as TarotCardType).detailed}
+                      {cardDetailed(
+                        slots[0] as OrientedTarotCard,
+                        (slots[0] as OrientedTarotCard).reversed,
+                      )}
                     </Text>
                   </View>
                 </GlassCard>
@@ -1245,19 +1841,23 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                         >
                           {card.nameRu}
                         </Text>
-                        <Text style={styles.cardLatin}>{card.name}</Text>
+                        {card.reversed ? (
+                          <Text style={styles.reversedBadge}>Перевёрнутая</Text>
+                        ) : null}
                         <View style={styles.divider} />
                         <Text style={styles.shortLabel}>Короткое значение</Text>
-                        <Text style={styles.shortText}>{card.short}</Text>
+                        <Text style={styles.shortText}>
+                          {cardShort(card, card.reversed)}
+                        </Text>
                         <View style={styles.dividerThin} />
                         <Text style={styles.shortLabel}>Подробное толкование</Text>
-                        <Text style={styles.detailedText}>{card.detailed}</Text>
+                        <Text style={styles.detailedText}>
+                          {cardDetailed(card, card.reversed)}
+                        </Text>
                       </View>
                     </GlassCard>
                   );
                 })}
-
-              <Text style={styles.savedBadge}>Сохранено в Дневник Судьбы</Text>
 
               {savedIntuition.length > 0 && (
                 <GlassCard
@@ -1270,30 +1870,6 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                   </View>
                 </GlassCard>
               )}
-
-              <Pressable
-                onPress={() => setIntuitionOpen(true)}
-                testID="intuition-open-btn"
-                style={({ pressed }) => [
-                  styles.intuitionBtn,
-                  pressed && { opacity: 0.85 },
-                ]}
-              >
-                <PenTool color={theme.colors.purple} size={16} />
-                <Text style={styles.intuitionBtnText}>Моё толкование</Text>
-              </Pressable>
-
-              <Pressable
-                onPress={resetSpread}
-                testID="tarot-reset-btn"
-                style={({ pressed }) => [
-                  styles.resetBtn,
-                  pressed && { transform: [{ scale: 0.98 }] },
-                ]}
-              >
-                <Layers color={theme.colors.text} size={16} />
-                <Text style={styles.resetBtnText}>Новый расклад</Text>
-              </Pressable>
             </Animated.View>
           )}
 
@@ -1302,7 +1878,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {pickFlight ? (
+      {flowPhase === "picking" && pickFlight ? (
         <Animated.View
           pointerEvents="none"
           style={[
@@ -1316,6 +1892,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
         >
           <TarotCard
             card={pickFlight.card}
+            reversed={pickFlight.card.reversed}
             flipped={false}
             width={pickFlight.width}
             height={pickFlight.height}
@@ -1328,7 +1905,7 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
         visible={intuitionOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setIntuitionOpen(false)}
+        onRequestClose={closeIntuitionModal}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -1352,13 +1929,13 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Моё толкование</Text>
                   <Pressable
-                    onPress={() => setIntuitionOpen(false)}
+                    onPress={closeIntuitionModal}
                     testID="intuition-close-btn"
                   >
                     <X color={theme.colors.textDim} size={22} />
                   </Pressable>
                 </View>
-                <Text style={styles.modalSubtitle}>{intuitionModalSubtitle}</Text>
+
                 <TextInput
                   testID="intuition-input"
                   value={intuitionText}
@@ -1377,22 +1954,86 @@ export default function TarotScreen({ embedded = false }: TarotScreenProps) {
                   testID="intuition-save-btn"
                   style={({ pressed }) => [
                     styles.modalBtn,
+                    modalShowsSaved && styles.modalBtnSaved,
                     pressed && { opacity: 0.85 },
                   ]}
                 >
-                  <Text style={styles.modalBtnText}>Сохранить</Text>
+                  {modalShowsSaved ? (
+                    <Check color={theme.colors.text} size={16} strokeWidth={2.2} />
+                  ) : null}
+                  <Text style={styles.modalBtnText}>
+                    {modalShowsSaved ? "Сохранено" : "Сохранить"}
+                  </Text>
                 </Pressable>
               </View>
             </GlassCard>
           </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
+      <Modal
+        visible={previewCard != null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setPreviewCard(null)}
+      >
+        <View style={styles.previewRoot}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setPreviewCard(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть"
+          />
+          {previewCard ? (
+            <Animated.View
+              entering={FadeInDown.duration(320).springify()}
+              style={styles.previewSheet}
+            >
+              <Pressable
+                onPress={() => setPreviewCard(null)}
+                style={styles.previewClose}
+                hitSlop={12}
+                testID="card-preview-close"
+              >
+                <X color={theme.colors.textMuted} size={22} />
+              </Pressable>
+              <TarotCard
+                card={previewCard}
+                reversed={previewCard.reversed}
+                flipped
+                width={Math.min(260, width - 72)}
+                height={Math.min(400, (width - 72) * (340 / 220))}
+              />
+              <Text style={styles.previewName} testID="card-preview-name">
+                {previewCard.nameRu}
+              </Text>
+              {previewCard.reversed ? (
+                <Text style={styles.reversedBadge}>Перевёрнутая</Text>
+              ) : null}
+              <Text style={styles.previewShort} testID="card-preview-short">
+                {cardShort(previewCard, previewCard.reversed)}
+              </Text>
+            </Animated.View>
+          ) : null}
+        </View>
+      </Modal>
+      <ProModal visible={proVisible} onClose={() => setProVisible(false)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.bg, position: "relative" },
+  /** Embedded in Гадания: let the shell's tarot backdrop show through. */
+  rootEmbedded: { backgroundColor: "transparent" },
+  shareOffscreen: {
+    position: "absolute",
+    top: 0,
+    left: -(SHARE_POSTER_W + 24),
+    width: SHARE_POSTER_W,
+    height: SHARE_POSTER_H,
+    overflow: "hidden",
+  },
   safe: { flex: 1 },
   scroll: { paddingHorizontal: 24, paddingTop: 0 },
   scrollPickingLocked: {
@@ -1457,6 +2098,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     textAlign: "center",
   },
+  titleReading: {
+    fontSize: 31,
+    lineHeight: 37,
+    marginBottom: 14,
+  },
   subtitle: {
     color: theme.colors.lilac,
     fontFamily: theme.fonts.body,
@@ -1500,7 +2146,7 @@ const styles = StyleSheet.create({
     ...theme.shadows.card,
   },
   spreadOptionBgImage: {
-    ...StyleSheet.absoluteFillObject,
+    borderRadius: 30,
   },
   spreadOptionBgScrim: {
     ...StyleSheet.absoluteFillObject,
@@ -1531,7 +2177,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   spreadOptionTitle: {
-    color: theme.colors.lilac,
+    color: theme.colors.archive.accent,
     fontFamily: theme.fonts.headingBold,
     fontSize: 23,
     lineHeight: 27,
@@ -1672,12 +2318,36 @@ const styles = StyleSheet.create({
   },
   slotsRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    flexWrap: "wrap",
+    justifyContent: "space-evenly",
     alignItems: "flex-start",
-    gap: 46,
+    gap: 16,
     paddingHorizontal: 4,
     marginTop: 10,
-    marginBottom: 6,
+    marginBottom: 2,
+  },
+  slotsRowCompact: {
+    flexWrap: "nowrap",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 0,
+  },
+  slotsRowThree: {
+    flexWrap: "nowrap",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingHorizontal: 0,
+  },
+  slotsRowFourResult: {
+    justifyContent: "center",
+    columnGap: 12,
+    rowGap: 12,
+  },
+  slotsRowFiveResult: {
+    position: "relative",
+    height: 438,
+    flexWrap: "nowrap",
+    paddingHorizontal: 0,
   },
   /** One-card spread: mirrors vertical space of `slotsRow` so the deck sits lower like 3-card flow */
   slotSingleWrap: {
@@ -1710,28 +2380,51 @@ const styles = StyleSheet.create({
   },
   slotPositionLabel: {
     marginBottom: 8,
+    height: 28,
     color: theme.colors.textDim,
     fontFamily: theme.fonts.bodySemi,
     fontSize: 10,
+    lineHeight: 12,
     letterSpacing: 1.1,
     textTransform: "uppercase",
     textAlign: "center",
     width: "100%",
   },
+  slotPositionLabelDense: {
+    marginBottom: 5,
+    height: 24,
+    fontSize: 9,
+    lineHeight: 11,
+    letterSpacing: 0.8,
+  },
   slotCardTitleWrap: {
     marginTop: 8,
-    minHeight: 38,
+    minHeight: 42,
     width: "100%",
     justifyContent: "flex-start",
     alignItems: "center",
     paddingHorizontal: 2,
   },
+  slotCardTitleWrapCollapsed: {
+    marginTop: 0,
+    minHeight: 0,
+  },
   slotCardTitleBelow: {
     color: theme.colors.text,
     fontFamily: theme.fonts.heading,
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 16,
+    lineHeight: 20,
     textAlign: "center",
+  },
+  slotCardTitleBelowDense: {
+    fontSize: 16,
+    lineHeight: 19,
+  },
+  singleCardTitleBelow: {
+    maxWidth: 280,
+    marginTop: 10,
+    fontSize: 18,
+    lineHeight: 22,
   },
   deckStripOuter: {
     marginHorizontal: -24,
@@ -1744,8 +2437,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   deckStripContentMulti: {
-    paddingVertical: 28,
-    minHeight: MULTI_CARD_HEIGHT + 52,
+    paddingVertical: 16,
+    minHeight: MULTI_CARD_HEIGHT + 36,
   },
   deckStripContentSingle: {
     paddingVertical: 28,
@@ -1788,22 +2481,6 @@ const styles = StyleSheet.create({
   },
   meaningCard: { marginTop: 12 },
   meaningInner: { padding: 22 },
-  summaryEyebrow: {
-    color: theme.colors.gold,
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 11,
-    letterSpacing: 2.5,
-    textAlign: "center",
-    marginBottom: 10,
-  },
-  summaryText: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.heading,
-    fontSize: 17,
-    lineHeight: 25,
-    textAlign: "center",
-    fontStyle: "italic",
-  },
   readingThumbWrap: {
     alignItems: "center",
     marginTop: 16,
@@ -1832,14 +2509,15 @@ const styles = StyleSheet.create({
     fontSize: 26,
     textAlign: "center",
   },
-  cardLatin: {
-    color: theme.colors.textDim,
-    fontFamily: theme.fonts.body,
-    fontSize: 12,
-    letterSpacing: 3,
-    textAlign: "center",
-    marginTop: 4,
+  reversedBadge: {
+    color: theme.colors.gold,
+    fontFamily: theme.fonts.bodySemi,
+    fontSize: 11,
+    letterSpacing: 1.8,
     textTransform: "uppercase",
+    textAlign: "center",
+    marginTop: 6,
+    opacity: 0.88,
   },
   divider: {
     height: 1,
@@ -1874,24 +2552,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     opacity: 0.9,
   },
-  intuitionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.colors.borderPurple,
-    backgroundColor: theme.colors.surfaceGlass,
-    marginTop: 16,
-  },
-  intuitionBtnText: {
-    color: theme.colors.mauve,
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 14,
-    letterSpacing: 1,
-  },
   intuitionSavedCard: { marginTop: 12 },
   intuitionEyebrow: {
     color: theme.colors.mauve,
@@ -1907,22 +2567,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
   },
-  resetBtn: {
+  actionRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    paddingVertical: 16,
-    borderRadius: 999,
-    backgroundColor: theme.colors.mauve,
-    marginTop: 16,
+    gap: 16,
+    marginTop: 20,
+    paddingHorizontal: 20,
   },
-  resetBtnText: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.bodySemi,
-    fontSize: 14,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
+  actionCircleBtn: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionCircleBtnPrimary: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#FFFFFF",
+    shadowColor: "#FFF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   modalRoot: {
     flex: 1,
@@ -1948,6 +2618,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontFamily: theme.fonts.headingBold,
     fontSize: 22,
+    marginBottom: 10,
   },
   modalSubtitle: {
     color: theme.colors.textDim,
@@ -1968,12 +2639,20 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.borderPurple,
     textAlignVertical: "top",
     marginBottom: 16,
+    // @ts-ignore - web only
+    outlineStyle: "none",
   },
   modalBtn: {
     paddingVertical: 14,
     borderRadius: 999,
     backgroundColor: theme.colors.mauve,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+  },
+  modalBtnSaved: {
+    backgroundColor: "rgba(16,185,129,0.55)",
   },
   modalBtnText: {
     color: theme.colors.text,
@@ -1981,5 +2660,97 @@ const styles = StyleSheet.create({
     fontSize: 14,
     letterSpacing: 1.5,
     textTransform: "uppercase",
+  },
+  archiveEmpty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    gap: 10,
+  },
+  archiveEmptyTitle: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.display,
+    fontSize: 22,
+    textAlign: "center",
+  },
+  archiveEmptyText: {
+    color: theme.colors.textDim,
+    fontFamily: theme.fonts.body,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  aiCtaWrap: {
+    marginTop: 20,
+    borderRadius: 999,
+    alignSelf: "stretch",
+    ...theme.shadows.ctaPrimary,
+  },
+  aiCtaGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 11,
+    paddingLeft: 22,
+    paddingRight: 12,
+    borderRadius: 999,
+  },
+  aiCtaMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 1,
+  },
+  aiCtaText: {
+    color: "#FFF7EA",
+    fontFamily: theme.fonts.bodySemi,
+    fontSize: 15,
+    lineHeight: 18,
+    letterSpacing: 0.5,
+  },
+  previewRoot: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(8,6,18,0.82)",
+    paddingHorizontal: 28,
+  },
+  previewSheet: {
+    width: "100%",
+    maxWidth: 360,
+    alignItems: "center",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: theme.colors.borderGold,
+    backgroundColor: "rgba(24,21,43,0.96)",
+    paddingTop: 28,
+    paddingBottom: 28,
+    paddingHorizontal: 22,
+  },
+  previewClose: {
+    position: "absolute",
+    top: 14,
+    right: 14,
+    zIndex: 2,
+    padding: 4,
+  },
+  previewName: {
+    marginTop: 20,
+    color: theme.colors.gold,
+    fontFamily: theme.fonts.display,
+    fontSize: 24,
+    textAlign: "center",
+  },
+  previewShort: {
+    marginTop: 10,
+    color: theme.colors.text,
+    fontFamily: theme.fonts.heading,
+    fontStyle: "italic",
+    fontSize: 16,
+    lineHeight: 23,
+    textAlign: "center",
+    opacity: 0.92,
   },
 });

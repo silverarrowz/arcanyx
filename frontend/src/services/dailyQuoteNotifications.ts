@@ -111,3 +111,18 @@ export async function syncDailyQuoteNotifications(): Promise<void> {
     } satisfies StoredSchedule),
   );
 }
+
+export async function setDailyQuoteNotificationsEnabled(enabled: boolean): Promise<void> {
+  if (enabled) {
+    await syncDailyQuoteNotifications();
+    return;
+  }
+
+  const stored = parseStoredSchedule(await AsyncStorage.getItem(STORAGE_KEY));
+  if (stored?.ids.length) {
+    await Promise.allSettled(
+      stored.ids.map((id) => Notifications.cancelScheduledNotificationAsync(id)),
+    );
+  }
+  await AsyncStorage.removeItem(STORAGE_KEY);
+}

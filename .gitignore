@@ -124,3 +124,19 @@ credentials.json
 *.pem
 *.key
 .credentials
+
+# Keep env templates commitable
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# Meditation audio/covers live on disk (and Atlas only stores metadata)
+backend/media/**/*.mp3
+backend/media/**/*.m4a
+backend/media/**/*.wav
+backend/media/**/*.aac
+backend/media/**/*.jpg
+backend/media/**/*.jpeg
+backend/media/**/*.png
+backend/media/**/*.webp
+!backend/media/**/.gitkeep

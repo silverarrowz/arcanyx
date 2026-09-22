@@ -1,16 +1,92 @@
 import type { ImageSourcePropType } from "react-native";
 
-/** Replace `art-1.png` / `art-2.png` in `assets/tarot/` with your real illustrations (same filenames or update requires). */
-const ART_A = require("../../assets/tarot/art-ckn2.png");
-const ART_B = require("../../assets/tarot/art-qc.png");
+const FALLBACK_ART = require("../../assets/tarot/card-back2.png");
 
-const FRONT_ART: ImageSourcePropType[] = [ART_A, ART_B];
+const FRONT_ART_BY_ID: Record<string, ImageSourcePropType> = {
+  fool: require("../../assets/tarot/major/fool.jpg"),
+  magician: require("../../assets/tarot/major/magician.jpg"),
+  "high-priestess": require("../../assets/tarot/major/highpriestess.jpg"),
+  empress: require("../../assets/tarot/major/emperess.jpg"),
+  emperor: require("../../assets/tarot/major/emperor.jpg"),
+  hierophant: require("../../assets/tarot/major/hierophant.jpg"),
+  lovers: require("../../assets/tarot/major/lovers.jpg"),
+  chariot: require("../../assets/tarot/major/chariot.jpg"),
+  strength: require("../../assets/tarot/major/strength.jpg"),
+  hermit: require("../../assets/tarot/major/hermit.jpg"),
+  "wheel-of-fortune": require("../../assets/tarot/major/wheel.jpg"),
+  justice: require("../../assets/tarot/major/justice.jpg"),
+  "hanged-man": require("../../assets/tarot/major/hangedman.jpg"),
+  death: require("../../assets/tarot/major/death.jpg"),
+  temperance: require("../../assets/tarot/major/temperance.jpg"),
+  devil: require("../../assets/tarot/major/devil.jpg"),
+  tower: require("../../assets/tarot/major/tower2.jpg"),
+  star: require("../../assets/tarot/major/star.jpg"),
+  moon: require("../../assets/tarot/major/moon.jpg"),
+  sun: require("../../assets/tarot/major/sun.jpg"),
+  judgement: require("../../assets/tarot/major/judgement.jpg"),
+  world: require("../../assets/tarot/major/world.jpg"),
 
-/** Picks one of the two placeholder arts per card (stable for a given id). */
+  "ace-of-wands": require("../../assets/tarot/wands/wacelp.jpg"),
+  "two-of-wands": require("../../assets/tarot/wands/w2lp.jpg"),
+  "three-of-wands": require("../../assets/tarot/wands/w3lp.jpg"),
+  "four-of-wands": require("../../assets/tarot/wands/w4lp.jpg"),
+  "five-of-wands": require("../../assets/tarot/wands/w5lp.jpg"),
+  "six-of-wands": require("../../assets/tarot/wands/w6lp.jpg"),
+  "seven-of-wands": require("../../assets/tarot/wands/w7lp.jpg"),
+  "eight-of-wands": require("../../assets/tarot/wands/w8lp.jpg"),
+  "nine-of-wands": require("../../assets/tarot/wands/w9lp.jpg"),
+  "ten-of-wands": require("../../assets/tarot/wands/w10lp.jpg"),
+  "page-of-wands": require("../../assets/tarot/wands/wpagelp.jpg"),
+  "knight-of-wands": require("../../assets/tarot/wands/wkngtlp.jpg"),
+  "queen-of-wands": require("../../assets/tarot/wands/wands-qlp2.jpg"),
+  "king-of-wands": require("../../assets/tarot/wands/wands-klp2.jpg"),
+
+  "ace-of-cups": require("../../assets/tarot/cups/cupsacelp.jpg"),
+  "two-of-cups": require("../../assets/tarot/cups/cups2lp.jpg"),
+  "three-of-cups": require("../../assets/tarot/cups/cups3lp.jpg"),
+  "four-of-cups": require("../../assets/tarot/cups/cups4lp.jpg"),
+  "five-of-cups": require("../../assets/tarot/cups/cups5lp.jpg"),
+  "six-of-cups": require("../../assets/tarot/cups/cups6lp.jpg"),
+  "seven-of-cups": require("../../assets/tarot/cups/cups7lp.jpg"),
+  "eight-of-cups": require("../../assets/tarot/cups/cups8lp.jpg"),
+  "nine-of-cups": require("../../assets/tarot/cups/cups9lp.jpg"),
+  "ten-of-cups": require("../../assets/tarot/cups/cup10lp.jpg"),
+  "page-of-cups": require("../../assets/tarot/cups/cuppagelp.jpg"),
+  "knight-of-cups": require("../../assets/tarot/cups/cupkn1.jpg"),
+  "queen-of-cups": require("../../assets/tarot/cups/cupqlpc.jpg"),
+  "king-of-cups": require("../../assets/tarot/cups/cupking.jpg"),
+
+  "ace-of-swords": require("../../assets/tarot/swords/swace.jpg"),
+  "two-of-swords": require("../../assets/tarot/swords/sw2.jpg"),
+  "three-of-swords": require("../../assets/tarot/swords/sw3.jpg"),
+  "four-of-swords": require("../../assets/tarot/swords/sw4.jpg"),
+  "five-of-swords": require("../../assets/tarot/swords/sw5.jpg"),
+  "six-of-swords": require("../../assets/tarot/swords/sw6.jpg"),
+  "seven-of-swords": require("../../assets/tarot/swords/sw7.jpg"),
+  "eight-of-swords": require("../../assets/tarot/swords/sw8.jpg"),
+  "nine-of-swords": require("../../assets/tarot/swords/sw9.jpg"),
+  "ten-of-swords": require("../../assets/tarot/swords/sw10.jpg"),
+  "page-of-swords": require("../../assets/tarot/swords/swpage.jpg"),
+  "knight-of-swords": require("../../assets/tarot/swords/swknilp.jpg"),
+  "queen-of-swords": require("../../assets/tarot/swords/swqueen.jpg"),
+  "king-of-swords": require("../../assets/tarot/swords/swkinglp.jpg"),
+
+  "ace-of-pentacles": require("../../assets/tarot/pentacles/pace.jpg"),
+  "two-of-pentacles": require("../../assets/tarot/pentacles/p2.jpg"),
+  "three-of-pentacles": require("../../assets/tarot/pentacles/p3.jpg"),
+  "four-of-pentacles": require("../../assets/tarot/pentacles/p4.jpg"),
+  "five-of-pentacles": require("../../assets/tarot/pentacles/p5.jpg"),
+  "six-of-pentacles": require("../../assets/tarot/pentacles/p6.jpg"),
+  "seven-of-pentacles": require("../../assets/tarot/pentacles/p7.jpg"),
+  "eight-of-pentacles": require("../../assets/tarot/pentacles/p8.jpg"),
+  "nine-of-pentacles": require("../../assets/tarot/pentacles/p9.jpg"),
+  "ten-of-pentacles": require("../../assets/tarot/pentacles/p10.jpg"),
+  "page-of-pentacles": require("../../assets/tarot/pentacles/ppage.jpg"),
+  "knight-of-pentacles": require("../../assets/tarot/pentacles/pkn.jpg"),
+  "queen-of-pentacles": require("../../assets/tarot/pentacles/pq.jpg"),
+  "king-of-pentacles": require("../../assets/tarot/pentacles/pk.jpg"),
+};
+
 export function frontArtSourceForCardId(cardId: string): ImageSourcePropType {
-  let h = 0;
-  for (let i = 0; i < cardId.length; i++) {
-    h = (h + cardId.charCodeAt(i)) % 997;
-  }
-  return FRONT_ART[h % FRONT_ART.length];
+  return FRONT_ART_BY_ID[cardId] ?? FALLBACK_ART;
 }

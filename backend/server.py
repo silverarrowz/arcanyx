@@ -1,8 +1,15 @@
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / ".env")
+
 from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
-from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError, model_validator
 from typing import List, Optional, Dict, Tuple, Any
 import os
@@ -11,11 +18,17 @@ import logging
 import hashlib
 import random
 import time
+import uuid
 import requests
 
-
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
+from admin import page_router as admin_page_router, router as admin_router
+from admin_tarot_spreads import router as admin_tarot_spreads_router
+from auth import router as auth_router
+from db import close_db, connect_db, ping_db
+from meditations import media_root, router as meditations_router, seed_meditations
+from storage import s3_configured, upload_bytes
+from tarot_chat import router as tarot_chat_router
+from tarot_spreads import router as tarot_spreads_router, seed_tarot_spreads
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,14 +37,34 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 logger.info(
-    "Mistral config | api_key_present=%s | agent_id_present=%s | agent_id_prefix=%s",
+    "Mistral config | api_key_present=%s | agent_id_present=%s | agent_id_prefix=%s | tarot_agent_id_present=%s | tarot_agent_id_prefix=%s",
     bool(os.getenv("MISTRAL_API_KEY")),
     bool(os.getenv("MISTRAL_AGENT_ID")),
     (os.getenv("MISTRAL_AGENT_ID") or "")[:10],
+    bool(os.getenv("MISTRAL_TAROT_AGENT_ID")),
+    (os.getenv("MISTRAL_TAROT_AGENT_ID") or "")[:10],
 )
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        await connect_db()
+        await seed_meditations()
+        await seed_tarot_spreads()
+    except Exception:
+        logger.exception("MongoDB connection failed at startup")
+    yield
+    await close_db()
+
+
+app = FastAPI(lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_router)
+api_router.include_router(meditations_router)
+api_router.include_router(tarot_chat_router)
+api_router.include_router(tarot_spreads_router)
+api_router.include_router(admin_router)
+api_router.include_router(admin_tarot_spreads_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,7 +100,7 @@ class DreamInterpretResponse(BaseModel):
     fallback: bool = False
 
 
-DEFAULT_FAL_IMAGE_MODEL = "fal-ai/flux-1/schnell"
+DEFAULT_FAL_IMAGE_MODEL = "fal-ai/flux/schnell"
 
 DREAM_ILLUSTRATION_SUPPORTED_IMAGE_SIZES: List[str] = [
     "square_hd",
@@ -269,6 +302,7 @@ def build_mistral_request_body(payload: DreamInterpretRequest) -> dict:
                 "role": "user",
                 "content": (
                     "Истолкуй сон по этим данным пользователя. "
+                    "В interpretation и advice обращайся на «вы» и гендерно нейтрально. "
                     "Верни только JSON по заданной схеме агента. "
                     "Поля interpretation и advice должны быть строками, не массивами. "
                     "Только symbols должен быть массивом.\n\n"
@@ -634,6 +668,41 @@ def parse_fal_illustration_response(result: Any, model: str) -> DreamIllustratio
     )
 
 
+def _illustration_extension(url: str, content_type: Optional[str]) -> str:
+    lowered_type = (content_type or "").lower()
+    lowered_url = url.lower()
+    if "jpeg" in lowered_type or "jpg" in lowered_type or lowered_url.endswith((".jpg", ".jpeg")):
+        return ".jpg"
+    if "webp" in lowered_type or lowered_url.endswith(".webp"):
+        return ".webp"
+    return ".png"
+
+
+def persist_dream_illustration_url(url: str, content_type: Optional[str]) -> str:
+    """Copy fal CDN files to S3 so diary images outlive fal's 24h TTL."""
+    if not s3_configured():
+        return url
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        data = response.content
+        if not data:
+            return url
+
+        filename = f"{uuid.uuid4().hex}{_illustration_extension(url, content_type)}"
+        uploaded = upload_bytes(
+            data,
+            f"dreams/{filename}",
+            content_type=content_type or "image/png",
+        )
+        stored = uploaded.get("url") or ""
+        if stored:
+            return stored
+    except Exception:
+        logger.exception("Failed to persist fal illustration, keeping provider URL")
+    return url
+
+
 def generate_dream_illustration_sync(payload: DreamIllustrationRequest) -> DreamIllustrationResponse:
     fal_key = os.getenv("FAL_KEY")
     if not fal_key:
@@ -648,6 +717,7 @@ def generate_dream_illustration_sync(payload: DreamIllustrationRequest) -> Dream
         "prompt": final_prompt,
         "image_size": payload.image_size,
         "num_images": payload.num_images,
+        "num_inference_steps": 4,
         "output_format": payload.output_format,
         "enable_safety_checker": True,
     }
@@ -674,14 +744,65 @@ def generate_dream_illustration_sync(payload: DreamIllustrationRequest) -> Dream
         raise RuntimeError(str(exc)) from exc
 
     try:
-        return parse_fal_illustration_response(result, model)
+        parsed = parse_fal_illustration_response(result, model)
     except ValueError as exc:
         raise RuntimeError(str(exc)) from exc
+
+    persisted: List[DreamIllustrationImage] = []
+    for image in parsed.images:
+        persisted.append(
+            image.model_copy(
+                update={"url": persist_dream_illustration_url(image.url, image.content_type)}
+            )
+        )
+    return parsed.model_copy(update={"images": persisted})
+
+
+def probe_outbound_url(url: str, timeout_seconds: float = 8.0) -> dict:
+    try:
+        response = requests.get(url, timeout=timeout_seconds)
+        return {
+            "reachable": True,
+            "status_code": response.status_code,
+        }
+    except requests.RequestException as exc:
+        return {
+            "reachable": False,
+            "error": exc.__class__.__name__,
+            "message": str(exc)[:300],
+        }
 
 
 @api_router.get("/")
 async def root():
     return {"message": "API is running"}
+
+
+@api_router.get("/health")
+async def health():
+    mongo = await ping_db()
+    return {
+        "ok": True,
+        "service": "mystix-api",
+        "mistral_api_key": bool(os.getenv("MISTRAL_API_KEY")),
+        "mistral_agent_id": bool(os.getenv("MISTRAL_AGENT_ID")),
+        "mistral_tarot_agent_id": bool(os.getenv("MISTRAL_TAROT_AGENT_ID")),
+        "fal_key": bool(os.getenv("FAL_KEY")),
+        "mongodb": mongo,
+        "google_auth": bool(
+            (os.getenv("GOOGLE_CLIENT_ID") or "").strip()
+            and (os.getenv("GOOGLE_CLIENT_SECRET") or "").strip()
+        ),
+    }
+
+
+@api_router.get("/health/outbound")
+async def health_outbound():
+    """Check whether this host can reach Mistral and fal.ai (useful on RU VPS)."""
+    return {
+        "mistral": probe_outbound_url("https://api.mistral.ai/v1/models"),
+        "fal": probe_outbound_url("https://fal.run"),
+    }
 
 
 @api_router.post("/dreams/interpret", response_model=DreamInterpretResponse)
@@ -765,3 +886,5 @@ async def dream_illustration_config():
 
 
 app.include_router(api_router)
+app.include_router(admin_page_router)
+app.mount("/media", StaticFiles(directory=str(media_root())), name="media")

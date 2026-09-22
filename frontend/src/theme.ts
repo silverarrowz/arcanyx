@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 export const theme = {
   colors: {
     bg: "#121022",
@@ -27,6 +29,20 @@ export const theme = {
     ink: "#151226",
     success: "#10B981",
     danger: "#EF4444",
+    /**
+     * Editorial palette from the Arcanyx visual archive: near-black paper, one
+     * lavender accent, neutral greys. Deliberately colder and flatter than the
+     * mystical palette above — for archive/index surfaces, not for cards.
+     */
+    archive: {
+      paper: "#0C0B11",
+      paperLift: "#13111E",
+      headline: "#F3EDF9",
+      accent: "#C9A8FF",
+      body: "#BFBCC5",
+      label: "#98959E",
+      rule: "rgba(243,237,249,0.11)",
+    },
   },
   gradients: {
     background: ["#121022", "#1B1730", "#271D46"],
@@ -63,7 +79,26 @@ export const theme = {
     bodyMedium: "Manrope_500Medium",
     bodySemi: "Manrope_600SemiBold",
     display: "YesevaOne_400Regular",
+    /**
+     * The archive's serif. Iowan Old Style ships with iOS; elsewhere we fall
+     * back to the Cormorant that's already bundled — the closest old-style
+     * face we have. Pair `editorialItalic` with `editorialItalicStyle`, since
+     * the Cormorant fallback is already slanted and must not be skewed again.
+     */
+    editorialSerif: Platform.select({
+      ios: "Iowan Old Style",
+      default: "CormorantGaramond_600SemiBold",
+    }) as string,
+    editorialItalic: Platform.select({
+      ios: "Iowan Old Style",
+      default: "CormorantGaramond_600SemiBold_Italic",
+    }) as string,
   },
+  /** `"italic"` only where the italic comes from a synthesized face. */
+  editorialItalicStyle: Platform.select({
+    ios: "italic",
+    default: "normal",
+  }) as "italic" | "normal",
   shadows: {
     card: {
       shadowColor: "#05030D",

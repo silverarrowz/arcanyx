@@ -1,0 +1,42 @@
+[
+  {
+    "slug": "meditation-relax",
+    "title": "Расслабление",
+    "description": "Мягкая практика, чтобы снять напряжение и вернуться в спокойное тело.",
+    "tags": ["расслабление", "тело", "вечер"],
+    "durationSec": 171,
+    "audioFile": "meditation-relax.mp3",
+    "coverFile": "meditation-relax.jpg",
+    "sort": 10
+  },
+  {
+    "slug": "lucid-dreams",
+    "title": "Осознанные сны",
+    "description": "Настройка внимания перед сном: ясность, присутствие, тонкий контроль сновидения.",
+    "tags": ["сон", "осознанные сны", "вечер"],
+    "durationSec": 187,
+    "audioFile": "lucid-dreams.mp3",
+    "coverFile": "lucid-dreams.jpg",
+    "sort": 20
+  },
+  {
+    "slug": "prophetic-dreams",
+    "title": "Вещие сны",
+    "description": "Тихая медитация, чтобы лучше слышать образы и послания ночи.",
+    "tags": ["сон", "интуиция", "сновидения"],
+    "durationSec": 171,
+    "audioFile": "prophetic-dreams.mp3",
+    "coverFile": "prophetic-dreams.jpg",
+    "sort": 30
+  },
+  {
+    "slug": "contact-the-unconscious",
+    "title": "Контакт с бессознательным",
+    "description": "Погружение внутрь: образы, ощущения и то, что обычно остаётся за кадром.",
+    "tags": ["бессознательное", "глубина", "образы"],
+    "durationSec": 260,
+    "audioFile": "contact-the-unconscious.mp3",
+    "coverFile": "contact-the-unconscious.jpg",
+    "sort": 40
+  }
+]

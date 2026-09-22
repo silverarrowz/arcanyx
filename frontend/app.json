@@ -7,16 +7,17 @@
     "icon": "./assets/images/icon.png",
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["audio"]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "backgroundColor": "#000000"
       },
-      "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
@@ -40,11 +41,24 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Mystix использует микрофон, чтобы вы могли надиктовать описание сна.",
-          "speechRecognitionPermission": "Mystix использует распознавание речи, чтобы превратить вашу речь о сне в текст.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+          "microphonePermission": "Arcanyx использует микрофон, чтобы вы могли надиктовать описание сна.",
+          "speechRecognitionPermission": "Arcanyx использует распознавание речи, чтобы превратить вашу речь о сне в текст.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true,
+          "enableMicrophonePermission": false
+        }
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
   KeyboardAvoidingView,
@@ -26,7 +26,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, useScrollToTop } from "expo-router";
 import Svg, {
   Defs,
   Mask,
@@ -36,10 +36,8 @@ import Svg, {
 } from "react-native-svg";
 import {
   ArrowRight,
-  Bell,
   Circle,
-  Compass,
-  Flame,
+  Headphones,
   Menu,
   Moon,
   Sparkle,
@@ -48,30 +46,36 @@ import {
 import { theme } from "../../src/theme";
 import CosmicBackground from "../../src/components/CosmicBackground";
 import GlassCard from "../../src/components/GlassCard";
+import SettingsModal from "../../src/components/profile/SettingsModal";
 import SparkleField from "../../src/components/Sparkles";
 import TarotCard from "../../src/components/TarotCard";
 import { DAILY_PHRASES } from "../../src/data/tarotCards";
 import { useHistory } from "../../src/context/HistoryContext";
+import { useUser } from "../../src/context/UserContext";
 import { todayKey, useDailyCard } from "../../src/hooks/useDailyCard";
+import { useDailyMeditation } from "../../src/hooks/useDailyMeditation";
 import { getCardReading } from "../../src/data/tarotReadings";
 import { getDailyQuote } from "../../src/data/dailyQuotes";
 import DreamInterpretLoadingScreen from "../../src/screens/DreamInterpretLoadingScreen";
 import {
   DREAM_TEXT_MAX_LENGTH,
+  applyDreamIllustration,
   interpretDream,
+  startDreamIllustration,
 } from "../../src/services/dreamInterpretation";
+import { meditationCoverUrl } from "../../src/services/meditations";
 
 const HOME_LOGO = require("../../assets/home/logo.png");
-const HERO_BG = require("../../assets/home/bg-main3.png");
-const ENERGY_BG = require("../../assets/home/bg-energy.png");
-const DREAM_BG = require("../../assets/home/bg-main-bottom.png");
+const HERO_BG = require("../../assets/home/bg-main3.jpg");
+const ENERGY_BG = require("../../assets/home/bg-energy.jpg");
+const DREAM_BG = require("../../assets/home/bg-main-bottom.jpg");
 /** Фон секции «Цитата дня» — того же набора, что и hero/энергия/сонник */
-const QUOTE_SECTION_BG = require("../../assets/home/bgi5.png");
+const QUOTE_SECTION_BG = require("../../assets/home/bgi5.jpg");
 const QUOTE_MARK_IMG = require("../../assets/home/quote3.png");
 const TAROT_CARD_BACK = require("../../assets/tarot/card-back2.png");
 const QR_ORACLE = require("../../assets/home/chrome-b.jpg");
 const QR_DREAMS = require("../../assets/home/chrome-dreams3.png");
-const QR_AFFIRM = require("../../assets/home/chrome-aff.png");
+const QR_AFFIRM = require("../../assets/home/chrome-aff.jpg");
 const QR_TAROT = require("../../assets/home/chrom-tarot3.png");
 
 function pickByDay<T>(arr: T[], dayKey: string): T {
@@ -91,7 +95,7 @@ function greetingForHour(h: number): string {
 const ENERGY_THEMES = [
   {
     title: "Развитие\nи Рост",
-    quote: "То, что ты взращиваешь сегодня, расцветёт твоим завтра.",
+    quote: "То, что вы взращиваете сегодня, расцветёт вашим завтра.",
     gradientRgb: [76, 168, 124] as const,
   },
   {
@@ -101,12 +105,12 @@ const ENERGY_THEMES = [
   },
   {
     title: "Принятие\nи Поток",
-    quote: "Когда ты перестаёшь бороться, вселенная начинает вести.",
+    quote: "Когда вы перестаёте бороться, вселенная начинает вести.",
     gradientRgb: [72, 178, 196] as const,
   },
   {
     title: "Любовь\nи Мягкость",
-    quote: "Нежность к себе — это магия, которую ты несёшь в мир.",
+    quote: "Нежность к себе — это магия, которую вы несёте в мир.",
     gradientRgb: [214, 128, 168] as const,
   },
   {
@@ -116,7 +120,7 @@ const ENERGY_THEMES = [
   },
   {
     title: "Интуиция\nи Доверие",
-    quote: "Твой внутренний голос знает путь раньше, чем разум его понимает.",
+    quote: "Ваш внутренний голос знает путь раньше, чем разум его понимает.",
     gradientRgb: [108, 90, 214] as const,
   },
   {
@@ -126,7 +130,7 @@ const ENERGY_THEMES = [
   },
   {
     title: "Гармония\nи Баланс",
-    quote: "Равновесие приходит, когда ты позволяешь всему быть.",
+    quote: "Равновесие приходит, когда вы позволяете всему быть.",
     gradientRgb: [120, 172, 140] as const,
   },
   {
@@ -151,12 +155,12 @@ const ENERGY_THEMES = [
   },
   {
     title: "Защита\nи Границы",
-    quote: "Сохраняя себя, ты усиливаешь свою энергию.",
+    quote: "Сохраняя себя, вы усиливаете свою энергию.",
     gradientRgb: [96, 116, 176] as const,
   },
   {
     title: "Тишина\nи Внутренний Мир",
-    quote: "В тишине ты находишь ответы, которых не слышно в шуме.",
+    quote: "В тишине вы находите ответы, которых не слышно в шуме.",
     gradientRgb: [88, 96, 156] as const,
   },
   {
@@ -166,7 +170,7 @@ const ENERGY_THEMES = [
   },
   {
     title: "Благодарность\nи Изобилие",
-    quote: "Ценя то, что есть, ты открываешь двери для большего.",
+    quote: "Ценя то, что есть, вы открываете двери для большего.",
     gradientRgb: [212, 176, 96] as const,
   },
   {
@@ -181,7 +185,7 @@ const ENERGY_THEMES = [
   },
   {
     title: "Принятие\nи Исцеление",
-    quote: "Приняв себя, ты начинаешь мягко меняться.",
+    quote: "Приняв себя, вы начинаете мягко меняться.",
     gradientRgb: [96, 188, 168] as const,
   },
   {
@@ -245,37 +249,33 @@ type Ritual = {
   title: string;
   subtitle: string;
   qrImage: ImageSourcePropType;
-  icon: "moon" | "orb" | "sparkle" | "sun";
+  icon: "moon" | "orb" | "sparkle" | "sun" | "headphones";
 };
+
+/** Подпись плитки «Медитация», пока каталог ещё не загрузился. */
+const MEDITATION_TILE_FALLBACK_SUB = "Практика дня";
 
 const QUICK_RITUALS: Ritual[] = [
   {
     key: "daily-spread",
     title: "Таро",
-    subtitle: "Обрети ясность",
+    subtitle: "Обретите ясность",
     qrImage: QR_TAROT,
     icon: "moon",
   },
   {
     key: "oracle",
     title: "Магический шар",
-    subtitle: "Задай вопрос",
+    subtitle: "Задайте вопрос",
     qrImage: QR_ORACLE,
     icon: "orb",
   },
   {
     key: "dream",
     title: "Сны",
-    subtitle: "Раскрой смысл",
+    subtitle: "Раскройте смысл",
     qrImage: QR_DREAMS,
     icon: "sparkle",
-  },
-  {
-    key: "affirm",
-    title: "Аффирмация",
-    subtitle: "Настройся на лучшее",
-    qrImage: QR_AFFIRM,
-    icon: "sun",
   },
 ];
 
@@ -296,6 +296,8 @@ function QuickRitualIcon({
       return <Circle color={color} size={size} strokeWidth={stroke + 0.65} />;
     case "sparkle":
       return <Sparkle color={color} size={size} strokeWidth={stroke} />;
+    case "headphones":
+      return <Headphones color={color} size={size} strokeWidth={stroke} />;
     default:
       return <Sun color={color} size={size} strokeWidth={stroke} />;
   }
@@ -395,7 +397,7 @@ function QuickRitualTile({
   );
 }
 
-const DREAM_PROMPTS = ["падение", "полет", "вода", "зубы", "..."];
+const DREAM_PROMPTS = ["падение", "полет", "вода", "зубы"];
 
 /** Высота поля сна на главной (меньше, чем на экране сонника); скролл внутри */
 const HOME_DREAM_INPUT_H = 116;
@@ -436,17 +438,27 @@ export default function HomeScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { streak, addItem } = useHistory();
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
+  const { addItem, updateItem } = useHistory();
+  const { name, isAuthenticated } = useUser();
+  const userName = isAuthenticated ? name : "Гость";
+  const [isSettingsVisible, setSettingsVisible] = useState(false);
+  const [heroHeight, setHeroHeight] = useState(0);
   const [currentDayKey, setCurrentDayKey] = useState(() => todayKey());
   const [dreamText, setDreamText] = useState("");
   const [dreamInterpretLoading, setDreamInterpretLoading] = useState(false);
   const [dreamInterpretError, setDreamInterpretError] = useState<string | null>(null);
   const {
     card: dailyCard,
+    reversed: dailyReversed,
     hasDrawn,
     loading: dailyCardLoading,
     refresh: refreshDailyCard,
   } = useDailyCard();
+  const { meditation: dailyMeditation } = useDailyMeditation();
+  const heroBackgroundHeight =
+    heroHeight > 0 ? Math.ceil(heroHeight * 1.75) : Math.ceil(windowWidth * 1.75);
 
   const drawCtaGlow = useSharedValue(0);
 
@@ -497,9 +509,31 @@ export default function HomeScreen() {
       if (key === "oracle") router.push("/(tabs)/gadania?tab=oracle");
       if (key === "daily-spread") router.push("/(tabs)/gadania?tab=tarot");
       if (key === "dream") router.push("/(tabs)/dreambook");
+      if (key === "meditation") {
+        router.push(
+          dailyMeditation
+            ? `/meditation-player?slug=${encodeURIComponent(dailyMeditation.slug)}`
+            : "/(tabs)/meditations",
+        );
+      }
     },
-    [router],
+    [dailyMeditation, router],
   );
+
+  /** Первая плитка — медитация дня: обложка, название и переход сразу в плеер. */
+  const quickRituals = useMemo<Ritual[]>(() => {
+    const cover = dailyMeditation ? meditationCoverUrl(dailyMeditation) : null;
+    return [
+      {
+        key: "meditation",
+        title: "Медитация",
+        subtitle: dailyMeditation?.title ?? MEDITATION_TILE_FALLBACK_SUB,
+        qrImage: cover ? { uri: cover } : QR_AFFIRM,
+        icon: "headphones",
+      },
+      ...QUICK_RITUALS,
+    ];
+  }, [dailyMeditation]);
 
   /** Ширина как у прежней крупной карточки в бенто (доля 1.08 от пары 1.08+1). */
   const ritualCardWidth = useMemo(() => {
@@ -554,13 +588,14 @@ export default function HomeScreen() {
   );
   const dailyQuote = useMemo(() => getDailyQuote(currentDayKey), [currentDayKey]);
   const greeting = useMemo(() => greetingForHour(new Date().getHours()), []);
-  const userName = "Диана";
 
   // Get the reading data for the drawn card (if any)
   const dailyReading = useMemo(() => {
     if (!dailyCard) return null;
-    return getCardReading(dailyCard);
-  }, [dailyCard]);
+    return getCardReading(dailyCard, dailyReversed);
+  }, [dailyCard, dailyReversed]);
+  const dailyCardNameWords = dailyCard?.nameRu.trim().split(/\s+/) ?? [];
+  const dailyCardNameIsSingleWord = dailyCardNameWords.length <= 1;
 
   // Navigate to full draw ritual
   const handleGoToDraw = () => {
@@ -568,7 +603,6 @@ export default function HomeScreen() {
   };
 
   const handleDreamPrompt = useCallback((prompt: string) => {
-    if (prompt === "...") return;
     setDreamInterpretError(null);
     setDreamText((prev) => {
       const trimmed = prev.trim();
@@ -583,6 +617,7 @@ export default function HomeScreen() {
 
     setDreamInterpretError(null);
     setDreamInterpretLoading(true);
+    const illustration = startDreamIllustration(dreamSnippet);
     try {
       const response = await interpretDream({
         dreamText: dreamSnippet,
@@ -596,7 +631,9 @@ export default function HomeScreen() {
         dreamInterpretation: response.interpretation,
         dreamSymbols: response.symbols,
         dreamAdvice: response.advice,
+        dreamImageStatus: "pending",
       });
+      applyDreamIllustration(dreamId, illustration, updateItem);
       setDreamText("");
       router.push(`/dream-result?id=${encodeURIComponent(dreamId)}` as never);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -610,12 +647,7 @@ export default function HomeScreen() {
     } finally {
       setDreamInterpretLoading(false);
     }
-  }, [addItem, dreamInterpretLoading, dreamText, router]);
-
-  // Path / XP — derived from streak (placeholder formula)
-  const xp = Math.min(600, 180 + streak * 20);
-  const xpTotal = 600;
-  const xpPct = Math.max(6, Math.round((xp / xpTotal) * 100));
+  }, [addItem, dreamInterpretLoading, dreamText, router, updateItem]);
 
   const dreamReady = dreamText.trim().length > 0 && !dreamInterpretLoading;
 
@@ -631,42 +663,71 @@ export default function HomeScreen() {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
           <ScrollView
+            ref={scrollRef}
             contentContainerStyle={styles.scroll}
+            contentInsetAdjustmentBehavior="never"
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             automaticallyAdjustKeyboardInsets
             removeClippedSubviews={false}
             testID="home-scroll"
           >
-          {/* Hero with background illustration */}
-          <View style={styles.heroContainer}>
-            <Image
-              source={HERO_BG}
-              style={styles.heroImage}
-              contentFit="cover"
-              contentPosition="top right"
-              transition={300}
-            />
-            {/* Gradient fade — keeps top crisp, blends bottom into theme bg */}
-            <LinearGradient
-              colors={[
-                "rgba(18,16,34,0.0)",
-                "rgba(18,16,34,0.0)",
-                "rgba(18,16,34,0.55)",
-                theme.colors.bg,
-              ]}
-              locations={[0, 0.55, 0.85, 1]}
-              style={StyleSheet.absoluteFillObject}
-            />
-            {/* Subtle left-side darken so greeting text stays readable */}
-            <LinearGradient
-              colors={["rgba(18,16,34,0.55)", "rgba(18,16,34,0.0)"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={StyleSheet.absoluteFillObject}
-            />
+          <View
+            style={[styles.heroBackdrop, { height: heroBackgroundHeight }]}
+            pointerEvents="none"
+          >
+              <Image
+                source={HERO_BG}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  width: Math.ceil(windowWidth * 1.18),
+                  height: heroBackgroundHeight,
+                }}
+                contentFit="cover"
+                contentPosition="top center"
+                cachePolicy="memory-disk"
+                priority="high"
+              />
+              <LinearGradient
+                colors={[
+                  "rgba(18,16,34,0)",
+                  "rgba(18,16,34,0.22)",
+                  "rgba(18,16,34,0.7)",
+                  theme.colors.bg,
+                ]}
+                locations={[0, 0.28, 0.62, 1]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: Math.round(heroBackgroundHeight * 0.58),
+                }}
+              />
+              <LinearGradient
+                colors={["rgba(18,16,34,0.5)", "rgba(18,16,34,0)"]}
+                locations={[0, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={StyleSheet.absoluteFill}
+              />
+          </View>
 
-            {/* Top nav row — menu | logo | bell */}
+          {/* Hero + tarot sit on the same sky so the glass card can frost it. */}
+          <View
+            style={styles.heroContainer}
+            onLayout={({ nativeEvent }) => {
+              const nextHeight = Math.round(nativeEvent.layout.height);
+              setHeroHeight((current) =>
+                current === nextHeight ? current : nextHeight,
+              );
+            }}
+          >
+            {/* Top nav row — menu | logo */}
             <View
               style={[
                 styles.topBar,
@@ -676,8 +737,14 @@ export default function HomeScreen() {
               <View style={[styles.topBarSide, styles.topBarSideLeft]}>
                 <Pressable
                   style={styles.iconButton}
+                  onPress={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                    setSettingsVisible(true);
+                  }}
                   hitSlop={8}
                   testID="home-menu-btn"
+                  accessibilityRole="button"
+                  accessibilityLabel="Открыть настройки"
                 >
                   <Menu color={theme.colors.text} size={20} strokeWidth={1.8} />
                 </Pressable>
@@ -688,19 +755,10 @@ export default function HomeScreen() {
                   style={styles.topBarLogoImage}
                   contentFit="contain"
                   transition={150}
-                  accessibilityLabel="Mystix"
+                  accessibilityLabel="Arcanyx"
                 />
               </View>
-              <View style={[styles.topBarSide, styles.topBarSideRight]}>
-                <Pressable
-                  style={styles.iconButton}
-                  hitSlop={8}
-                  testID="home-bell-btn"
-                >
-                  <Bell color={theme.colors.text} size={19} strokeWidth={1.8} />
-                  <View style={styles.notifDot} />
-                </Pressable>
-              </View>
+              <View style={[styles.topBarSide, styles.topBarSideRight]} />
             </View>
 
             {/* Greeting block — one row: salutation + name */}
@@ -713,18 +771,21 @@ export default function HomeScreen() {
                   {userName}
                 </Text>
               </Text>
-             
             </View>
-          </View>
 
-          <View style={styles.contentWrap}>
+            <View style={styles.heroTarotWrap}>
           {/* Tarot of the Day */}
           <GlassCard
             glow="purple"
             borderColor={theme.colors.borderPurple}
-            intensity={14}
-            surfaceColor="rgba(98,82,142,0.22)"
-            overlayColor="rgba(116,95,168,0.18)"
+            intensity={Platform.OS === "web" ? 48 : 22}
+            tint={Platform.OS === "web" ? "systemThinMaterialDark" : "default"}
+            surfaceColor="rgba(98,82,142,0.18)"
+            overlayColor={
+              Platform.OS === "web"
+                ? "rgba(98,82,142,0.22)"
+                : "rgba(78,62,122,0.48)"
+            }
             allowOverflow={!hasDrawn}
             style={styles.bigCard}
           >
@@ -736,10 +797,10 @@ export default function HomeScreen() {
                     <Text style={styles.eyebrow}>✦ ТАРО ДНЯ ✦</Text>
                   </View>
                   <Text style={styles.bigCardTitle}>
-                    Вытяни карту дня
+                    Вытяните карту дня
                   </Text>
                   <Text style={styles.bigCardSub}>
-                    Получи руководство{"\n"}и ясность на сегодня.
+                    Получите руководство{"\n"}и ясность на сегодня.
                   </Text>
 
                   <View style={[styles.ctaWrap, styles.drawCtaWrap]}>
@@ -803,7 +864,7 @@ export default function HomeScreen() {
                             <Stop offset="62%" stopColor="#FFFFFF" stopOpacity={0.11} />
                             <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
                           </RadialGradient>
-                          <Mask id="homeDailyCardAuraMask" maskType="luminance">
+                          <Mask id="homeDailyCardAuraMask">
                             <Rect width="100%" height="100%" fill="url(#homeDailyCardAuraFeather)" />
                           </Mask>
                           <RadialGradient
@@ -845,19 +906,25 @@ export default function HomeScreen() {
                   <Pressable
                     onPress={handleGoToDraw}
                     style={({ pressed }) => [
-                      styles.cardPlaceholder,
+                      styles.cardPlaceholderHit,
                       pressed && !dailyCardLoading && { opacity: 0.92 },
                     ]}
                     testID="home-draw-card-image"
                     disabled={dailyCardLoading}
                   >
-                    <Image
-                      source={TAROT_CARD_BACK}
-                      style={styles.cardPlaceholderImage}
-                      contentFit="cover"
-                      transition={150}
-                    />
-                    <View style={styles.cardPlaceholderBorder} />
+                    <View style={styles.cardPlaceholderRotate}>
+                      <View style={styles.cardPlaceholderClip}>
+                        <Image
+                          source={TAROT_CARD_BACK}
+                          style={styles.cardPlaceholderImage}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                          priority="high"
+                          transition={0}
+                        />
+                        <View style={styles.cardPlaceholderBorder} pointerEvents="none" />
+                      </View>
+                    </View>
                   </Pressable>
                 </View>
               </View>
@@ -870,11 +937,24 @@ export default function HomeScreen() {
                   <View style={styles.bigCardText}>
                     <View style={styles.eyebrowRow}>
                       {/* <Sun color={theme.colors.gold} size={14} strokeWidth={1.6} /> */}
-                      <Text style={styles.eyebrow}>✦ ТВОЯ КАРТА ДНЯ ✦</Text>
+                      <Text style={styles.eyebrow}>✦ ВАША КАРТА ДНЯ ✦</Text>
                     </View>
-                    <Text style={styles.cardRevealName} testID="card-of-the-day-name">
+                    {/* Two-word names wrap at the space at full size, same scale as
+                        the energy heading. A single long word («Императрица»,
+                        «Справедливость») shrinks just enough to stay on one line
+                        instead of dropping a single letter. */}
+                    <Text
+                      style={styles.cardRevealName}
+                      numberOfLines={dailyCardNameIsSingleWord ? 1 : 2}
+                      adjustsFontSizeToFit={dailyCardNameIsSingleWord}
+                      minimumFontScale={0.82}
+                      testID="card-of-the-day-name"
+                    >
                       {dailyCard.nameRu}
                     </Text>
+                    {dailyReversed ? (
+                      <Text style={styles.reversedBadge}>Перевёрнутая</Text>
+                    ) : null}
                      {/* Quote row below the card */}
                 {dailyReading && (
                   <View style={styles.cardQuoteRow}>
@@ -910,23 +990,35 @@ export default function HomeScreen() {
                   </View>
 
                   {/* Right-side: actual drawn card */}
-                  <View style={styles.bigCardArt}>
+                  <Pressable
+                    onPress={handleGoToDraw}
+                    style={({ pressed }) => [
+                      styles.bigCardArt,
+                      pressed && { opacity: 0.92 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Открыть карту дня"
+                    testID="home-open-reading-card"
+                  >
                     <TarotCard
                       card={dailyCard}
+                      reversed={dailyReversed}
                       flipped={true}
-                      onFlip={() => {}}
                       width={122}
                       height={178}
                       testID="card-of-the-day"
                     />
-                  </View>
+                  </Pressable>
                 </View>
 
                
               </>
             )}
           </GlassCard>
+            </View>
+          </View>
 
+          <View style={styles.contentWrap}>
           {/* Energy of the Day */}
           <GlassCard
             borderColor={theme.colors.borderPurple}
@@ -938,6 +1030,7 @@ export default function HomeScreen() {
               style={styles.energyBgImage}
               contentFit="cover"
               contentPosition="right center"
+              cachePolicy="memory-disk"
             />
             {/* Gradient overlay to blend with card and keep text readable */}
             <LinearGradient
@@ -974,7 +1067,7 @@ export default function HomeScreen() {
             style={styles.ritualsRowScroll}
             contentContainerStyle={styles.ritualsRowContent}
           >
-            {QUICK_RITUALS.map((r, i) => renderRitualTile(r, i))}
+            {quickRituals.map((r, i) => renderRitualTile(r, i))}
           </ScrollView>
 
           <GlassCard borderColor={theme.colors.borderPurple} style={styles.dailyQuoteCard}>
@@ -983,6 +1076,8 @@ export default function HomeScreen() {
               style={styles.dailyQuoteBgImage}
               contentFit="cover"
               contentPosition="center"
+              cachePolicy="memory-disk"
+              pointerEvents="none"
             />
             <LinearGradient
               colors={[
@@ -1027,7 +1122,9 @@ export default function HomeScreen() {
               source={DREAM_BG}
               style={styles.dreamBgImage}
               contentFit="cover"
-              contentPosition="left center"
+              contentPosition="right center"
+              cachePolicy="memory-disk"
+              pointerEvents="none"
             />
             <LinearGradient
               colors={[
@@ -1040,6 +1137,7 @@ export default function HomeScreen() {
               end={{ x: 1, y: 0 }}
               locations={[0, 0.28, 0.58, 1]}
               style={StyleSheet.absoluteFill}
+              pointerEvents="none"
             />
             <View style={styles.dreamInner}>
               <View style={styles.dreamCopy}>
@@ -1126,67 +1224,15 @@ export default function HomeScreen() {
             </View>
           </GlassCard>
 
-   
-
-          {/* Streak + Path */}
-          <GlassCard
-            borderColor={theme.colors.borderPurple}
-            style={styles.pathCard}
-          >
-            <View style={styles.pathInner}>
-              {/* Streak */}
-              <View style={styles.pathLeft}>
-                <Text style={styles.sectionEyebrow}>РИТУАЛ-СЕРИЯ</Text>
-                <View style={styles.streakRow}>
-                  <View style={styles.streakRing}>
-                    <LinearGradient
-                      colors={["rgba(255,215,154,0.28)", "rgba(157,124,230,0.16)"]}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    <Flame color={theme.colors.gold} size={24} strokeWidth={1.6} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.streakNumber} testID="streak-badge">
-                      {streak}{" "}
-                      <Text style={styles.streakUnit}>дн.</Text>
-                    </Text>
-                    <Text style={styles.streakCaption}>
-                      Продолжай —{"\n"}энергия в потоке.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.pathDivider} />
-
-              {/* Path */}
-              <View style={styles.pathRight}>
-                <Text style={styles.sectionEyebrow}>ТВОЙ ПУТЬ</Text>
-                <Text style={styles.pathRank}>Начинающий{"\n"}Мистик</Text>
-                <View style={styles.progressTrack}>
-                  <LinearGradient
-                    colors={["#EFA0C0", "#9D7CE6"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.progressFill, { width: `${xpPct}%` }]}
-                  />
-                </View>
-                <Text style={styles.pathXp}>
-                  {xp} / {xpTotal} XP
-                </Text>
-              </View>
-
-              <View style={styles.badgeCircle}>
-                <Compass color={theme.colors.gold} size={22} strokeWidth={1.5} />
-              </View>
-            </View>
-          </GlassCard>
-
           <View style={{ height: 140 }} />
           </View>
         </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      <SettingsModal
+        visible={isSettingsVisible}
+        onClose={() => setSettingsVisible(false)}
+      />
     </View>
   );
 }
@@ -1196,7 +1242,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   scroll: { paddingHorizontal: 0, paddingTop: 0 },
 
-  contentWrap: { paddingHorizontal: 20, marginTop: -36 },
+  contentWrap: { paddingHorizontal: 24 },
 
   /* Top bar */
   topBar: {
@@ -1204,7 +1250,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     marginTop: 0,
     marginBottom: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
   },
   topBarSide: {
     flex: 1,
@@ -1238,45 +1284,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.borderStrong,
   },
-  notifDot: {
-    position: "absolute",
-    top: 10,
-    right: 11,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.colors.gold,
-    shadowColor: theme.colors.gold,
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-  },
 
   /* Greeting */
   greetingBlock: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     gap: 8,
     paddingHorizontal: 24,
-    // marginBottom: 14,
-    marginTop: 12,
+    paddingBottom: 14,
+    marginTop: 8,
   },
   greetingLine: {
     flex: 1,
     flexShrink: 1,
+    overflow: "visible",
   },
   greetingSmall: {
     color: theme.colors.text,
     fontFamily: theme.fonts.heading,
     fontSize: 22,
-    lineHeight: 30,
+    lineHeight: 34,
     letterSpacing: 0.2,
   },
   greetingName: {
     color: theme.colors.purple,
     fontFamily: theme.fonts.headingItalic,
     fontSize: 28,
-    lineHeight: 30,
+    lineHeight: 34,
     letterSpacing: 0.2,
   },
   greetingSub: {
@@ -1291,18 +1325,21 @@ const styles = StyleSheet.create({
   /* Hero with background illustration */
   heroContainer: {
     width: "100%",
-    minHeight: 270,
     paddingTop: 0,
-    paddingBottom: 12,
-    marginBottom: -48,
-    overflow: "hidden",
+    paddingBottom: 10,
+    overflow: "visible",
   },
-  heroImage: {
+  heroBackdrop: {
     position: "absolute",
-    top: -210,
+    top: 0,
     left: 0,
     right: 0,
-    bottom: -30,
+    overflow: "hidden",
+  },
+  heroTarotWrap: {
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
 
   /* Eyebrow */
@@ -1325,12 +1362,13 @@ const styles = StyleSheet.create({
   },
   bigCardInner: {
     flexDirection: "row",
-    padding: 22,
-    gap: 14,
+    paddingVertical: 24,
+    paddingLeft: 24,
+    paddingRight: 16,
+    gap: 12,
   },
   bigCardText: {
     flex: 1,
-    paddingRight: 4,
   },
   bigCardTitle: {
     color: theme.colors.text,
@@ -1456,20 +1494,27 @@ const styles = StyleSheet.create({
     opacity: 0.78,
     zIndex: 1,
   },
-  cardPlaceholder: {
+  cardPlaceholderHit: {
+    width: 112,
+    height: 168,
+    zIndex: 2,
+  },
+  cardPlaceholderRotate: {
+    width: 112,
+    height: 168,
+    transform: [{ rotate: "-6deg" }],
+  },
+  cardPlaceholderClip: {
     width: 112,
     height: 168,
     borderRadius: 14,
     overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
     borderWidth: 1,
     borderColor: theme.colors.borderGold,
-    transform: [{ rotate: "-6deg" }],
-    zIndex: 2,
   },
   cardPlaceholderImage: {
-    ...StyleSheet.absoluteFillObject,
+    width: 112,
+    height: 168,
   },
   cardPlaceholderBorder: {
     ...StyleSheet.absoluteFillObject,
@@ -1482,8 +1527,17 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontFamily: theme.fonts.display,
     fontSize: 22,
-    lineHeight: 26,
+    lineHeight: 28,
     marginBottom: 6,
+  },
+  reversedBadge: {
+    color: theme.colors.gold,
+    fontFamily: theme.fonts.bodySemi,
+    fontSize: 10,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    marginBottom: 6,
+    opacity: 0.88,
   },
   energyPillSmall: {
     flexDirection: "row",
@@ -1570,7 +1624,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   dreamBgImage: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "100%",
     opacity: 0.95,
   },
   dreamInner: {
@@ -1594,8 +1652,6 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     marginTop: 2,
     borderRadius: 22,
-    maxHeight: HOME_DREAM_INPUT_H,
-    overflow: "hidden",
   },
   dreamInput: {
     width: "100%",
@@ -1609,7 +1665,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
-  
+    // @ts-ignore - web only
+    outlineStyle: "none",
   },
   dreamPromptRow: {
     flexDirection: "row",
@@ -1700,12 +1757,20 @@ const styles = StyleSheet.create({
     minHeight: 132,
   },
   dailyQuoteBgImage: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "100%",
     zIndex: 0,
     opacity: 0.85,
   },
   dailyQuoteGradient: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     zIndex: 1,
   },
   dailyQuoteInner: {
@@ -1817,96 +1882,5 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.5)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 10,
-  },
-
-  /* Path card */
-  pathCard: {
-    marginTop: 22,
-  },
-  pathInner: {
-    flexDirection: "row",
-    padding: 18,
-    alignItems: "stretch",
-    gap: 14,
-  },
-  pathLeft: {
-    flex: 1,
-  },
-  streakRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 10,
-  },
-  streakRing: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    borderWidth: 1.5,
-    borderColor: theme.colors.borderGold,
-  },
-  streakNumber: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.display,
-    fontSize: 26,
-    lineHeight: 30,
-  },
-  streakUnit: {
-    color: theme.colors.textDim,
-    fontFamily: theme.fonts.body,
-    fontSize: 13,
-  },
-  streakCaption: {
-    color: theme.colors.textDim,
-    fontFamily: theme.fonts.body,
-    fontSize: 11.5,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  pathDivider: {
-    width: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
-  pathRight: {
-    flex: 1.1,
-  },
-  pathRank: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.heading,
-    fontSize: 16,
-    lineHeight: 19,
-    marginTop: 10,
-    marginBottom: 10,
-  },
-  progressTrack: {
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  pathXp: {
-    color: theme.colors.textDim,
-    fontFamily: theme.fonts.body,
-    fontSize: 11.5,
-    marginTop: 6,
-    letterSpacing: 0.4,
-  },
-  badgeCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "center",
-    backgroundColor: "rgba(255,215,154,0.10)",
-    borderWidth: 1,
-    borderColor: theme.colors.borderGold,
   },
 });
