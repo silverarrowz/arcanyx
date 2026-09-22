@@ -54,6 +54,10 @@ async def connect_db() -> None:
     await _db.meditations.create_index("tags")
     await _db.tarot_spreads.create_index("slug", unique=True)
     await _db.tarot_spreads.create_index([("published", 1), ("sort", 1)])
+    await _db.support_requests.create_index([("status", 1), ("created_at", -1)])
+    await _db.support_requests.create_index([("user_id", 1), ("created_at", -1)])
+    await _db.support_requests.create_index([("email", 1), ("created_at", -1)])
+    await _db.support_requests.create_index([("ip_hash", 1), ("created_at", -1)])
     logger.info("MongoDB connected | db=%s", db_name)
 
 

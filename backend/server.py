@@ -27,6 +27,7 @@ from auth import router as auth_router
 from db import close_db, connect_db, ping_db
 from meditations import media_root, router as meditations_router, seed_meditations
 from storage import s3_configured, upload_bytes
+from support import router as support_router
 from tarot_chat import router as tarot_chat_router
 from tarot_spreads import router as tarot_spreads_router, seed_tarot_spreads
 
@@ -63,6 +64,7 @@ api_router.include_router(auth_router)
 api_router.include_router(meditations_router)
 api_router.include_router(tarot_chat_router)
 api_router.include_router(tarot_spreads_router)
+api_router.include_router(support_router)
 api_router.include_router(admin_router)
 api_router.include_router(admin_tarot_spreads_router)
 

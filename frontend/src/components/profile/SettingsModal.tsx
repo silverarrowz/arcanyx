@@ -94,6 +94,11 @@ export default function SettingsModal({ visible, onClose }: Props) {
     setLoginVisible(true);
   };
 
+  const openSupport = () => {
+    closeSettings();
+    router.push("/support" as never);
+  };
+
   const openProfile = () => {
     Haptics.selectionAsync().catch(() => {});
     closeSettings();
@@ -246,15 +251,22 @@ export default function SettingsModal({ visible, onClose }: Props) {
               <ChevronRight color={theme.colors.textMuted} size={18} />
             </Pressable>
 
-            <View style={[styles.row, styles.rowDisabled]}>
+            <Pressable
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              onPress={openSupport}
+              accessibilityRole="button"
+              accessibilityLabel="Поддержка"
+              testID="settings-support-btn"
+            >
               <View style={styles.rowIcon}>
                 <LifeBuoy color={theme.colors.textDim} size={18} strokeWidth={1.7} />
               </View>
               <View style={styles.rowCopy}>
                 <Text style={styles.rowTitle}>Поддержка</Text>
-                <Text style={styles.rowSubtitle}>Скоро</Text>
+                <Text style={styles.rowSubtitle}>Частые вопросы и связь с нами</Text>
               </View>
-            </View>
+              <ChevronRight color={theme.colors.textMuted} size={18} />
+            </Pressable>
 
             {isAuthenticated ? (
               <Pressable
@@ -361,9 +373,6 @@ const styles = StyleSheet.create({
   },
   rowPressed: {
     backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  rowDisabled: {
-    opacity: 0.52,
   },
   rowIcon: {
     width: 36,

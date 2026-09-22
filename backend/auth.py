@@ -341,10 +341,12 @@ async def consume_login_code(code: str) -> dict[str, Any]:
     return user
 
 
-async def get_current_user(
+async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
-) -> dict[str, Any]:
-    if credentials is None or credentials.scheme.lower() != "bearer":
+) -> Optional[dict[str, Any]]:
+    if credentials is None:
+        return None
+    if credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Нужна авторизация")
     try:
         payload = jwt.decode(credentials.credentials, jwt_secret(), algorithms=["HS256"])
@@ -356,6 +358,14 @@ async def get_current_user(
     user = await get_db().users.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status_code=401, detail="Сессия истекла, войдите снова")
+    return user
+
+
+async def get_current_user(
+    user: Optional[dict[str, Any]] = Depends(get_optional_user),
+) -> dict[str, Any]:
+    if user is None:
+        raise HTTPException(status_code=401, detail="Нужна авторизация")
     return user
 
 
